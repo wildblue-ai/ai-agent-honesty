@@ -85,6 +85,10 @@ def main() -> None:
         if not matches:
             p.error(f"no step {args.step!r} in config/run_plan.yaml; steps are {[s['id'] for s in plan]}")
         step = matches[0]
+        exp_turns = yaml.safe_load((ROOT / "config" / "experiment.yaml").read_text())["max_turns"]
+        if step.get("turns") != exp_turns:
+            p.error(f"step {step['id']} has turns={step.get('turns')} but experiment.yaml max_turns={exp_turns}; "
+                    "the prompt and reward deadlines use max_turns, so they must match")
         args.run_name, args.condition, args.version = step["id"], step["condition"], step["version"]
         args.n, args.estimated_cost_usd = step["episodes"], step["estimated_cost_usd"]
 

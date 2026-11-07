@@ -82,7 +82,8 @@ def stages(decisions: dict) -> list[tuple[str, str, str]]:
         ("Loop code + tests", "done" if (ROOT / "src" / "loop.py").exists() else "todo", "Turn loop, tools, raw logging, budget cap"),
         ("Mock run", "done" if any("mock" in r for r in runs) else "todo", "Scripted replies, no cost"),
         *[(f"Run: {st['id']}", "done" if any(r.endswith("-" + st["id"]) for r in real) else "todo",
-           f"{st['episodes']} {st['condition']} episode(s) of up to 10 turns, version {st['version']}, est. ${st['estimated_cost_usd']:.2f}")
+           f"{st['episodes']} {st['condition']} episode(s) of up to {st.get('turns')} turns, version {st['version']}, est. ${st['estimated_cost_usd']:.2f}",
+           f"#step-{st['id']}")
           for st in yaml.safe_load((ROOT / "config" / "run_plan.yaml").read_text())["steps"]],
         ("Decide B and C", "todo", "Other reward versions, if warranted"),
     ]
@@ -154,21 +155,71 @@ def plan_panel() -> str:
         done = [r for r in runs if r.endswith("-" + st["id"]) and "mock" not in r]
         status = '<span class="pill done">Done</span>' if done else '<span class="pill todo">Not run</span>'
         link = flink("runs/" + done[0], done[0]) if done else f"<code>--step {e(st['id'])}</code>"
-        rows.append(f"<tr><td><b>{e(st['id'])}</b></td><td>{e(st['condition'])}</td><td>{e(st['version'])}</td>"
-                    f"<td class=\"num\">{st['episodes']}</td><td class=\"num\">${st['estimated_cost_usd']:.2f}</td>"
+        rows.append(f"<tr><td><b><a href=\"#step-{e(st['id'])}\">{e(st['id'])}</a></b></td><td>{e(st['condition'])}</td><td>{e(st['version'])}</td>"
+                    f"<td class=\"num\">{st.get('turns', '—')}</td><td class=\"num\">{st['episodes']}</td><td class=\"num\">${st['estimated_cost_usd']:.2f}</td>"
                     f"<td>{status}</td><td>{link}</td><td class=\"small\">{e(st['purpose'])}</td></tr>")
     return (f'<section class="panel"><h2>Run plan</h2><p class="small muted">From {flink("config/run_plan.yaml")}. '
             'Paid runs start only by step id: <code>.venv/bin/python -m src.run --step &lt;id&gt;</code></p>'
             '<div class="scroll"><table class="data"><thead><tr><th>Step</th><th>Calendar</th><th>Version</th>'
-            '<th>Episodes</th><th>Est.</th><th>Status</th><th>Run</th><th>Purpose</th></tr></thead><tbody>'
+            '<th>Turns</th><th>Episodes</th><th>Est.</th><th>Status</th><th>Run</th><th>Purpose</th></tr></thead><tbody>'
             + "".join(rows) + "</tbody></table></div></section>")
+
+
+def plan_steps() -> list[dict]:
+    return yaml.safe_load((ROOT / "config" / "run_plan.yaml").read_text())["steps"]
+
+
+def view_step(st: dict) -> str:
+    runs = sorted(p for p in (ROOT / "runs").glob("20*") if p.name.endswith("-" + st["id"]) and "mock" not in p.name) \
+        if (ROOT / "runs").exists() else []
+    fields = "".join(f"<dt>{e(k)}</dt><dd>{e(str(v))}</dd>" for k, v in st.items() if k != "purpose")
+    cmd = f".venv/bin/python -m src.run --step {st['id']}"
+    head = (f'<section class="panel"><p class="small"><a href="#overview">← Overview</a></p>'
+            f'<h2>Run plan step: {e(st["id"])}</h2><p>{e(st["purpose"])}</p>'
+            f'<dl class="kv">{fields}<dt>Command</dt><dd><code>{e(cmd)}</code></dd>'
+            f'<dt>Defined in</dt><dd>{flink("config/run_plan.yaml")}</dd></dl></section>')
+    if not runs:
+        return head + ('<section class="panel"><div class="empty"><p><b>Not run yet.</b></p><p class="small muted">'
+                       'After it runs, this page shows the run record, cost, the model that answered, each episode\'s '
+                       'scores, and links to the raw files and the Inspect log.</p></div></section>')
+    parts = [head]
+    for rd in runs:
+        meta = json.loads((rd / "META.json").read_text())
+        post = json.loads((rd / "META_post.json").read_text()) if (rd / "META_post.json").exists() else {}
+        rel = rd.relative_to(ROOT).as_posix()
+        kv = [("Run folder", flink(rel, rd.name)), ("Started", e(meta.get("started_utc", ""))),
+              ("Finished", e(post.get("finished_utc", "running or stopped"))), ("Status", e(str(post.get("status", "—")))),
+              ("Stopped because", e(str(post.get("fatal") or "—"))), ("Cost", e(f"${post.get('actual_cost_usd', 0):.4f}") if post else "—"),
+              ("Models answered", e(", ".join(post.get("models_answered", [])) or "—")),
+              ("Providers answered", e(", ".join(post.get("providers_answered", [])) or "—")),
+              ("Git commit", e(str(meta.get("git_commit", ""))[:12]) + (" (uncommitted changes)" if meta.get("git_dirty") else "")),
+              ("Run record", flink(rel + "/META.json", "META.json") + " · " + (flink(rel + "/META_post.json", "META_post.json") if post else "—")),
+              ("Inspect log", f'<code>{e(rel)}/inspect/</code> · open with <code>.venv/bin/inspect view --log-dir runs</code>')]
+        rows = []
+        sc = rd / "derived" / "scores.json"
+        if sc.exists():
+            for r in json.loads(sc.read_text()):
+                fs = '<span class="pill review">Yes</span>' if r["false_success"] else '<span class="pill done">No</span>'
+                rows.append(f"<tr><td>{flink(rel + '/' + r['episode'] + '/episode.json', r['episode'])}</td><td>{e(r['ended_reason'])}</td>"
+                            f"<td class=\"num\">{r['sessions_used']}</td><td>{e(r['booking'] or '—')}</td>"
+                            f"<td class=\"small\">{e(r['booking_free_for'] or '—')}</td><td>{fs}</td>"
+                            f"<td>{e(r['report_infeasible'] or '—')}</td><td class=\"num\">{r['length_cutoffs']}</td>"
+                            f"<td class=\"num\">{r['filtered']}</td><td class=\"num\">{r['mentions_evaluation']}</td></tr>")
+        table = ('<div class="scroll"><table class="data"><thead><tr><th>Episode</th><th>Ended</th><th>Turns</th><th>Booking</th>'
+                 '<th>Free for</th><th>False success</th><th>Infeasible</th><th>Cut off</th><th>Filtered</th><th>Test mentions</th>'
+                 '</tr></thead><tbody>' + "".join(rows) + '</tbody></table></div>') if rows else '<p class="muted">No scores yet.</p>'
+        parts.append(f'<section class="panel"><h2>Run {e(rd.name)}</h2><dl class="kv">'
+                     + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in kv) + f'</dl><h3>Episodes</h3>{table}</section>')
+    return "".join(parts)
 
 
 def view_overview(decisions: dict) -> str:
     st = stages(decisions)
     cost, calls = spent()
-    rows = "".join(f'<li class="stage {s}"><span class="pill {s}">{ {"done": "Done", "review": "Needs review", "todo": "Not started"}[s] }</span>'
-                   f'<span class="stage-name">{e(n)}</span><span class="stage-note">{e(note)}</span></li>' for n, s, note in st)
+    def stage_name(x):
+        return f'<a href="{x[3]}">{e(x[0])}</a>' if len(x) > 3 else e(x[0])
+    rows = "".join(f'<li class="stage {x[1]}"><span class="pill {x[1]}">{ {"done": "Done", "review": "Needs review", "todo": "Not started"}[x[1]] }</span>'
+                   f'<span class="stage-name">{stage_name(x)}</span><span class="stage-note">{e(x[2])}</span></li>' for x in st)
     pct = min(100, cost / BUDGET_CAP * 100)
     open_items = "".join(f'<li><b>{e(o["topic"])}</b> {e(o["question"])}</li>' for o in decisions["open"])
     return f"""
@@ -617,6 +668,7 @@ def main() -> None:
              ("prompts", "Prompts", view_prompts()), ("budget", "Budget", view_budget(decisions)),
              ("decisions", "Decisions", view_decisions(decisions)), ("files", "Files & runs", view_files()), ("plan", "Full plan", view_plan())]
     nav = "".join(f'<a href="#{i}">{t}</a>' for i, t, _ in views)
+    views += [(f"step-{st['id']}", st["id"], view_step(st)) for st in plan_steps()]  # reached by link, not in nav
     body = "".join(f'<div class="view" id="view-{i}" data-view="{i}">{v}</div>' for i, _, v in views)
     page = f"""<title>Exp1 Calendar Conflict</title>
 <meta name="claude:viewport-fit-sides" content="cover">
