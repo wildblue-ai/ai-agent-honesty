@@ -81,10 +81,9 @@ def stages(decisions: dict) -> list[tuple[str, str, str]]:
         ("Prompts", "done" if approved else "review", "Approved" if approved else "Drafted; awaiting Cheryl's approval"),
         ("Loop code + tests", "done" if (ROOT / "src" / "loop.py").exists() else "todo", "Turn loop, tools, raw logging, budget cap"),
         ("Mock run", "done" if any("mock" in r for r in runs) else "todo", "Scripted replies, no cost"),
-        ("Control check", "done" if real else "todo", "1 control episode, 10 sessions, max_tokens 8000"),
-        ("Control set", "todo", "10 control episodes; review"),
-        ("Test check", "todo", "1 impossible episode, version A"),
-        ("Test set", "todo", "10 impossible episodes, version A"),
+        *[(f"Run: {st['id']}", "done" if any(r.endswith("-" + st["id"]) for r in real) else "todo",
+           f"{st['episodes']} {st['condition']} episode(s) of up to 10 turns, version {st['version']}, est. ${st['estimated_cost_usd']:.2f}")
+          for st in yaml.safe_load((ROOT / "config" / "run_plan.yaml").read_text())["steps"]],
         ("Decide B and C", "todo", "Other reward versions, if warranted"),
     ]
 
@@ -134,6 +133,37 @@ def cast_panel() -> str:
             'condition; "control version" opens the control file.</p></section>')
 
 
+GLOSSARY = [
+    ("Run", "One step of the run plan, started with one command. It holds N episodes under one calendar and one reward version, in runs/<date>-<step>/."),
+    ("Episode", "One full attempt at the task from scratch: empty workspace, no bookings, no memory. It ends on booking + email, on a report of infeasible, or after 10 turns. One sample in the Inspect viewer."),
+    ("Turn", "One round: Alison acts, then Brad acts. The clock moves 30 minutes per turn, and the points deadlines (3/6/10) count turns. Set by max_turns. The agents' prompt calls a turn a \"work session\", a wording chosen to sound less like a game."),
+    ("Action", "One tool call within an agent's part of a turn. Up to 4 per agent per turn (steps_per_turn)."),
+]
+
+
+def glossary_panel() -> str:
+    rows = "".join(f"<dt>{e(t)}</dt><dd>{e(d)}</dd>" for t, d in GLOSSARY)
+    return f'<section class="panel"><h2>Terms</h2><dl class="kv gloss">{rows}</dl></section>'
+
+
+def plan_panel() -> str:
+    plan = yaml.safe_load((ROOT / "config" / "run_plan.yaml").read_text())["steps"]
+    runs = [p.name for p in (ROOT / "runs").glob("20*")] if (ROOT / "runs").exists() else []
+    rows = []
+    for st in plan:
+        done = [r for r in runs if r.endswith("-" + st["id"]) and "mock" not in r]
+        status = '<span class="pill done">Done</span>' if done else '<span class="pill todo">Not run</span>'
+        link = flink("runs/" + done[0], done[0]) if done else f"<code>--step {e(st['id'])}</code>"
+        rows.append(f"<tr><td><b>{e(st['id'])}</b></td><td>{e(st['condition'])}</td><td>{e(st['version'])}</td>"
+                    f"<td class=\"num\">{st['episodes']}</td><td class=\"num\">${st['estimated_cost_usd']:.2f}</td>"
+                    f"<td>{status}</td><td>{link}</td><td class=\"small\">{e(st['purpose'])}</td></tr>")
+    return (f'<section class="panel"><h2>Run plan</h2><p class="small muted">From {flink("config/run_plan.yaml")}. '
+            'Paid runs start only by step id: <code>.venv/bin/python -m src.run --step &lt;id&gt;</code></p>'
+            '<div class="scroll"><table class="data"><thead><tr><th>Step</th><th>Calendar</th><th>Version</th>'
+            '<th>Episodes</th><th>Est.</th><th>Status</th><th>Run</th><th>Purpose</th></tr></thead><tbody>'
+            + "".join(rows) + "</tbody></table></div></section>")
+
+
 def view_overview(decisions: dict) -> str:
     st = stages(decisions)
     cost, calls = spent()
@@ -163,6 +193,8 @@ def view_overview(decisions: dict) -> str:
     </div>
   </div>
 </section>
+{plan_panel()}
+{glossary_panel()}
 {cast_panel()}
 <section class="panel">
   <h2>Waiting on Cheryl <span class="count">{len(decisions["open"])}</span></h2>
@@ -307,6 +339,7 @@ FILE_ROLES = {
     "THIRD_PARTY_NOTICES.md": ("Record", "License notices for third-party material in this repository", False),
     "CLAUDE.md": ("Record", "Rules a new Claude Code session reads first", False),
     "config/SETTINGS_CHANGES.yaml": ("Record", "Dated log of setting changes", False),
+    "config/run_plan.yaml": ("Settings", "Planned runs: id, purpose, calendar, version, episodes, estimated cost", False),
 }
 SECRETS_FILE = ROOT / ("." + "env")  # existence check only; never opened
 
@@ -335,7 +368,7 @@ def view_files() -> str:
     head = ('<thead><tr><th>File</th><th>Kind</th><th>What it is</th><th>Visibility</th><th>Size</th>'
             '<th>sha256</th><th>Modified</th></tr></thead>')
     groups = [
-        ("Settings", [ROOT / "config" / "experiment.yaml", ROOT / "config" / "SETTINGS_CHANGES.yaml"]),
+        ("Settings", [ROOT / "config" / "experiment.yaml", ROOT / "config" / "run_plan.yaml", ROOT / "config" / "SETTINGS_CHANGES.yaml"]),
         ("Calendars", sorted(f for f in (ROOT / "config" / "calendars").rglob("*.*") if not f.name.startswith("."))),
         ("Prompts", sorted(f for f in (ROOT / "prompts").iterdir() if f.is_file() and not f.name.startswith("."))),
         ("Records", [ROOT / "DECISIONS.yaml", ROOT / "PLAN.md", ROOT / "README.md", ROOT / "CLAUDE.md", ROOT / "credits.md", ROOT / "THIRD_PARTY_NOTICES.md"]),
@@ -506,6 +539,8 @@ ol.changes{list-style:none;margin:0;padding:0}
 .fromto .arrow{color:var(--accent)}
 .why{margin:0}
 .ok-note{color:var(--ok);margin:0} .warn-note{color:var(--warn);margin:0}
+.gloss dt{font-weight:600;color:var(--ink)}
+.gloss{grid-template-columns:max-content 1fr;gap:8px 18px}
 .stack{display:flex;flex-direction:column;gap:16px}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px 20px;min-width:0}
 h2{font:600 1.05rem/1.3 var(--display);margin:0 0 12px;text-wrap:balance}

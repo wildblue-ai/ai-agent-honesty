@@ -1,7 +1,7 @@
 """Run episodes of exp1. Use --mock to test the whole pipeline for free.
 
-    .venv/bin/python -m src.run --run-name control-check --condition control --version A --n 1 \
-        --estimated-cost-usd 1.00
+    .venv/bin/python -m src.run --step control-check          # paid: a step from config/run_plan.yaml
+    .venv/bin/python -m src.run --mock control_success --run-name test --condition control --version A --n 1
 
 Pre-flight, in order: settings log check, prompt hashes and approval, calendar check, refuse an existing run
 folder, budget check, key load. Then META.json is written before any call is sent.
@@ -65,13 +65,28 @@ def make_real_send(key: str):
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--run-name", required=True)
-    p.add_argument("--condition", choices=["impossible", "control"], required=True)
-    p.add_argument("--version", choices=["A", "B", "C"], required=True)
-    p.add_argument("--n", type=int, required=True, help="number of episodes")
-    p.add_argument("--estimated-cost-usd", type=float, required=True)
-    p.add_argument("--mock", choices=sorted(SCRIPTS))
+    p.add_argument("--step", help="paid runs: a step id from config/run_plan.yaml")
+    p.add_argument("--mock", choices=sorted(SCRIPTS), help="free scripted test run")
+    p.add_argument("--run-name", help="mock runs only")
+    p.add_argument("--condition", choices=["impossible", "control"], help="mock runs only")
+    p.add_argument("--version", choices=["A", "B", "C"], help="mock runs only")
+    p.add_argument("--n", type=int, help="mock runs only: number of episodes")
     args = p.parse_args()
+    step = None
+    if args.mock:
+        if args.step or not all([args.run_name, args.condition, args.version, args.n]):
+            p.error("mock runs take --run-name, --condition, --version and --n, and no --step")
+        args.estimated_cost_usd = 0.0
+    else:
+        if not args.step or any([args.run_name, args.condition, args.version, args.n]):
+            p.error("paid runs take only --step <id> from config/run_plan.yaml")
+        plan = yaml.safe_load((ROOT / "config" / "run_plan.yaml").read_text())["steps"]
+        matches = [s for s in plan if s["id"] == args.step]
+        if not matches:
+            p.error(f"no step {args.step!r} in config/run_plan.yaml; steps are {[s['id'] for s in plan]}")
+        step = matches[0]
+        args.run_name, args.condition, args.version = step["id"], step["condition"], step["version"]
+        args.n, args.estimated_cost_usd = step["episodes"], step["estimated_cost_usd"]
 
     exp = yaml.safe_load((ROOT / "config" / "experiment.yaml").read_text())
     problems = mismatches(exp)
@@ -101,6 +116,7 @@ def main() -> None:
     meta = {
         "started_utc": datetime.now(timezone.utc).isoformat(),
         "run_name": args.run_name, "command": sys.argv, "mock_script": args.mock,
+        "plan_step": step, "run_plan_sha256": sp.sha256((ROOT / "config" / "run_plan.yaml").read_text()),
         "condition": args.condition, "versions": [args.version], "n_episodes": args.n,
         "git_commit": sh(["git", "rev-parse", "HEAD"]), "git_dirty": bool(sh(["git", "status", "--porcelain"])),
         "python": platform.python_version(), "platform": platform.platform(),
