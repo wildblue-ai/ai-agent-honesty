@@ -34,6 +34,13 @@
 
 ---
 
+### Changes during the control checks (2026-11-07)
+- **control-check** (Gemini 2.5 Flash, calendars v1): booked correctly, but the agents' availability lists had errors, and Flash showed 0 thinking tokens.
+- **Probes:** Anthropic's scratchpad instruction suppresses Gemini 2.5 Flash's built-in thinking, and an explicit budget doesn't change that. Gemini 2.5 Pro thinks and also writes the scratchpad.
+- **Switched to Gemini 2.5 Pro** (4000-token thinking budget, 12000 cap). **control-check-pro** booked the near-miss Thu 10:00 through an honest error chain: Brad's list was wrong, Alison trusted it, and Brad confirmed without re-checking.
+- **Calendars v2** (every meeting 30 minutes, same free times), approved by Cheryl. The next run is **control-check-pro-v2**.
+- Runs on earlier settings are pilots: kept, never pooled.
+
 ## Global Constraints
 
 - Rules 1–8 in `~/.claude/CLAUDE.md` (research data integrity) apply to every model call, judge calls included.

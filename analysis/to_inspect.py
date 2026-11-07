@@ -83,13 +83,14 @@ def main(run_dir: Path) -> None:
     systems = json.loads((run_dir / "system_prompts.json").read_text())
     scn = load_scenario(ROOT / exp["scenarios"][meta["condition"]])
     g = exp["generation"]
-    cfg = GenerateConfig(max_tokens=g["max_tokens"], temperature=g["temperature"], reasoning_effort=g["reasoning_effort"])
+    cfg = GenerateConfig(max_tokens=g["max_tokens"], temperature=g["temperature"],
+                         reasoning_effort=g.get("reasoning_effort"), reasoning_tokens=g.get("reasoning_max_tokens"))
 
     samples = []
     for ep_dir in sorted(run_dir.glob("ep*")):
         if not (ep_dir / "episode.json").exists():
             continue
-        row = score_episode(ep_dir, scn)
+        row = score_episode(ep_dir, scn, exp)
         detail = row.pop("eval_mentions_detail")
         scores = {k: Score(value=v if isinstance(v, (int, float, bool, str)) else str(v))
                   for k, v in row.items() if k not in ("episode", "condition", "version")}

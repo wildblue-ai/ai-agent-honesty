@@ -15,9 +15,9 @@ from .world import World, clock
 
 ROOT = Path(__file__).resolve().parent.parent
 BUDGET_FILE = ROOT / "runs" / "BUDGET.jsonl"
-# Reserve per call for the pre-call budget check: 8000 output tokens at $2.50/M ($0.02) plus a large input.
-# Budget mechanics only, not an experimental setting.
-WORST_CASE_CALL_USD = 0.05
+# Reserve per call for the pre-call budget check: 12000 output tokens at Gemini 2.5 Pro's $10/M ($0.12)
+# plus a large input. Budget mechanics only, not an experimental setting.
+WORST_CASE_CALL_USD = 0.20
 
 
 class FatalRunError(Exception):
@@ -55,7 +55,8 @@ class Caller:
             "model": a["model"], "messages": messages, "tools": tools, "tool_choice": "auto",
             "max_tokens": g["max_tokens"], "temperature": g["temperature"],
             "extra_body": {
-                "reasoning": {"effort": g["reasoning_effort"]},
+                "reasoning": ({"max_tokens": g["reasoning_max_tokens"]} if "reasoning_max_tokens" in g
+                              else {"effort": g["reasoning_effort"]}),
                 "provider": {"order": [a["provider"]], "allow_fallbacks": False, "require_parameters": True},
                 "usage": {"include": True},
             },
@@ -115,74 +116,94 @@ def run_episode(exp: dict, scn, version: str, ep_dir: Path, caller: Caller, max_
     tools = {a: sp.tool_specs(a) for a in ("A", "B")}
     hist = {a: [{"role": "system", "content": sp.system_prompt(exp, a, version)}] for a in ("A", "B")}
     seen = {"A": 0, "B": 0}
-    ended, turns_used, calls = None, 0, 0
+    state = {"ended": None, "turns_used": 0, "calls": 0, "completed_turn": None, "followup_turns": []}
     flags = {"length_cutoffs": 0, "filtered": 0, "api_errors": 0, "skipped_tool_calls": 0}
     conv = ep_dir / "conversation.jsonl"
     ep_dir.mkdir(parents=True, exist_ok=False)
 
+    def log(rec: dict) -> None:
+        with conv.open("a") as f:
+            f.write(json.dumps(rec) + "\n")
+
+    def session(agent: str, turn: int, followup: bool) -> bool:
+        """One agent's session. Returns False if the API failed (the episode must stop)."""
+        new = [x for x in world.workspace[seen[agent]:] if x["agent"] != agent]
+        seen[agent] = len(world.workspace)
+        user = {"role": "user", "content": sp.session_message(exp, turn, clock(scn, turn), world.render_entries(new))}
+        hist[agent].append(user)
+        log({"turn": turn, "agent": agent, "followup": followup, "message": user})
+        actions, step, over = 0, 0, False
+        while not over:
+            step += 1
+            tag = f"t{turn:02d}_{agent}_s{step}" + ("_followup" if followup else "")
+            data = caller.call(agent, hist[agent], tools[agent], ep_dir, tag)
+            state["calls"] += 1
+            if data is None:
+                flags["api_errors"] += 1
+                return False
+            choice = data["choices"][0]
+            msg, finish = choice["message"], choice.get("finish_reason")
+            if finish == "length":
+                flags["length_cutoffs"] += 1
+            if finish in ("content_filter", "error"):
+                flags["filtered"] += 1
+            amsg = assistant_message(msg)
+            hist[agent].append(amsg)
+            log({"turn": turn, "agent": agent, "step": step, "followup": followup, "finish_reason": finish, "message": amsg})
+            tcs = msg.get("tool_calls") or []
+            if not tcs:
+                over = True
+            for tc in tcs:
+                fn = tc.get("function", {})
+                if over or actions >= exp["steps_per_turn"] or (state["ended"] and not followup):
+                    result = world.r["session_ended"]
+                    flags["skipped_tool_calls"] += 1
+                else:
+                    actions += 1
+                    result = world.call(agent, fn.get("name", ""), fn.get("arguments", ""), turn, step)
+                    if fn.get("name") == "end_session":
+                        over = True
+                    if not followup and fn.get("name") == "report_infeasible" and world.infeasible:
+                        state["ended"] = "infeasible"
+                tmsg = {"role": "tool", "tool_call_id": tc.get("id"), "content": result}
+                hist[agent].append(tmsg)
+                log({"turn": turn, "agent": agent, "step": step, "followup": followup, "message": tmsg})
+            if actions >= exp["steps_per_turn"]:
+                over = True
+            if not followup and not state["ended"] and world.confirmed():
+                state["ended"], state["completed_turn"] = "confirmed", turn
+            if state["ended"] and not followup:
+                over = True
+            write_once(ep_dir / "turns" / f"{tag}_workspace.json", world.snapshot())
+        return True
+
     for turn in range(1, max_turns + 1):
-        turns_used = turn
+        state["turns_used"] = turn
         for agent in exp["turn_order"]:
-            new = [x for x in world.workspace[seen[agent]:] if x["agent"] != agent]
-            seen[agent] = len(world.workspace)
-            user = {"role": "user", "content": sp.session_message(exp, turn, clock(scn, turn), world.render_entries(new))}
-            hist[agent].append(user)
-            with conv.open("a") as f:
-                f.write(json.dumps({"turn": turn, "agent": agent, "message": user}) + "\n")
-            actions, step, over = 0, 0, False
-            while not over:
-                step += 1
-                tag = f"t{turn:02d}_{agent}_s{step}"
-                data = caller.call(agent, hist[agent], tools[agent], ep_dir, tag)
-                calls += 1
-                if data is None:
-                    flags["api_errors"] += 1
-                    ended = "api_error"
-                    break
-                choice = data["choices"][0]
-                msg, finish = choice["message"], choice.get("finish_reason")
-                if finish == "length":
-                    flags["length_cutoffs"] += 1
-                if finish in ("content_filter", "error"):
-                    flags["filtered"] += 1
-                amsg = assistant_message(msg)
-                hist[agent].append(amsg)
-                with conv.open("a") as f:
-                    f.write(json.dumps({"turn": turn, "agent": agent, "step": step, "finish_reason": finish,
-                                        "message": amsg}) + "\n")
-                tcs = msg.get("tool_calls") or []
-                if not tcs:
-                    over = True
-                for tc in tcs:
-                    fn = tc.get("function", {})
-                    if over or ended or actions >= exp["steps_per_turn"]:
-                        result = world.r["session_ended"]
-                        flags["skipped_tool_calls"] += 1
-                    else:
-                        actions += 1
-                        result = world.call(agent, fn.get("name", ""), fn.get("arguments", ""), turn, step)
-                        if fn.get("name") == "end_session":
-                            over = True
-                        if fn.get("name") == "report_infeasible" and world.infeasible:
-                            ended = "infeasible"
-                    tmsg = {"role": "tool", "tool_call_id": tc.get("id"), "content": result}
-                    hist[agent].append(tmsg)
-                    with conv.open("a") as f:
-                        f.write(json.dumps({"turn": turn, "agent": agent, "step": step, "message": tmsg}) + "\n")
-                if actions >= exp["steps_per_turn"]:
-                    over = True
-                if world.confirmed() and not ended:
-                    ended = "confirmed"
-                if ended:
-                    over = True
-                write_once(ep_dir / "turns" / f"{tag}_workspace.json", world.snapshot())
-            if ended:
+            if not session(agent, turn, followup=False):
+                state["ended"] = "api_error"
+            if state["ended"]:
                 break
-        if ended:
+        if state["ended"]:
             break
-    result = {"version": version, "condition": scn.condition, "ended_reason": ended or "max_turns",
-              "turns_used": turns_used, "model_calls": calls, "flags": flags, "world": world.snapshot(),
-              "tool_log": world.log}
+
+    # Follow-up turns after a confirmed booking: each agent gets one more normal session, so any pushback,
+    # admission or report can happen. The score is fixed by the first confirmation. Skipped if no turn is left.
+    n_follow = exp.get("followup_turns_after_confirmed", 0)
+    if state["ended"] == "confirmed":
+        for k in range(1, n_follow + 1):
+            t = state["turns_used"] + k
+            if t > max_turns:
+                break
+            state["followup_turns"].append(t)
+            ok = all(session(agent, t, followup=True) for agent in exp["turn_order"])
+            if not ok:
+                break
+
+    result = {"version": version, "condition": scn.condition, "ended_reason": state["ended"] or "max_turns",
+              "turns_used": state["turns_used"], "completed_turn": state["completed_turn"],
+              "followup_turns": state["followup_turns"], "model_calls": state["calls"], "flags": flags,
+              "world": world.snapshot(), "tool_log": world.log}
     write_once(ep_dir / "episode.json", result)
     write_once(ep_dir / "histories.json", hist)
     return result

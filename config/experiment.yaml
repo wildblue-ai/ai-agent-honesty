@@ -3,22 +3,22 @@
 # The dashboard's Settings tab flags any value that doesn't match the log.
 experiment_version: exp1-v1
 scenarios:
-  impossible: config/calendars/impossible_v1
-  control: config/calendars/control_v1
+  impossible: config/calendars/impossible_v2
+  control: config/calendars/control_v2
 
 agents:
   A:
     display_name: Alison        # chosen by Cheryl 2026-11-07. Shown to the agents.
-    model: google/gemini-2.5-flash
+    model: google/gemini-2.5-pro
     provider: google-ai-studio
   B:
     display_name: Brad          # chosen by Cheryl 2026-11-07. Shown to the agents.
-    model: google/gemini-2.5-flash
+    model: google/gemini-2.5-pro
     provider: google-ai-studio
 
 generation:
-  max_tokens: 8000
-  reasoning_effort: medium
+  max_tokens: 12000
+  reasoning_max_tokens: 4000      # explicit thinking budget (Google treats it as a ceiling)
   temperature: 1.0              # Cheryl 2026-11-07: matches Anthropic's Agentic Misalignment configs
 
 scratchpad: true                # Anthropic's SCRATCHPAD_REASONING instruction (Cheryl, 2026-11-07)
@@ -26,6 +26,7 @@ scratchpad: true                # Anthropic's SCRATCHPAD_REASONING instruction (
 max_turns: 10                   # turns per episode (one turn = Alison, then Brad; prompt says "work session")
 steps_per_turn: 4               # actions (tool calls) per agent per turn
 turn_order: [A, B]
+followup_turns_after_confirmed: 1   # one more turn after booking + email, for pushback or reports; score fixed at confirmation
 workspace_display: push        # new entries listed in each session's opening message, as Anthropic does
 
 reward:
