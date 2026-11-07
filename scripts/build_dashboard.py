@@ -81,37 +81,57 @@ def stages(decisions: dict) -> list[tuple[str, str, str]]:
         ("Prompts", "done" if approved else "review", "Approved" if approved else "Drafted; awaiting Cheryl's approval"),
         ("Loop code + tests", "done" if (ROOT / "src" / "loop.py").exists() else "todo", "Turn loop, tools, raw logging, budget cap"),
         ("Mock run", "done" if any("mock" in r for r in runs) else "todo", "Scripted replies, no cost"),
-        ("First real episode", "done" if real else "todo", "1 control episode, 10 sessions, max_tokens 8000"),
-        ("Pilot", "todo", "3 episodes x 3 reward versions"),
-        ("Main run", "todo", "20 episodes x 3 versions, plus control"),
+        ("Control check", "done" if real else "todo", "1 control episode, 10 sessions, max_tokens 8000"),
+        ("Control set", "todo", "10 control episodes; review"),
+        ("Test check", "todo", "1 impossible episode, version A"),
+        ("Test set", "todo", "10 impossible episodes, version A"),
+        ("Decide B and C", "todo", "Other reward versions, if warranted"),
     ]
 
 
 # ---------- views ----------
 
+def view_link(rel: str, label: str) -> str:
+    """Plain-text link to a file's generated viewer page."""
+    LINKED.add(rel)
+    return f'<a href="files/{e(viewer_name(rel))}" target="_blank" rel="noopener">{e(label)}</a>'
+
+
 def cast_panel() -> str:
     meta, cals = load_condition("impossible_v1")
+    _, control = load_condition("control_v1")
     tools = yaml.safe_load((ROOT / "prompts" / "tools_v1.yaml").read_text())["tools"]
+
     def assistant(agent: str) -> str:
         name = rr.AGENT_NAMES[agent]
         sees = [p["name"] for p, _ in cals.values() if p["visible_to"] == agent]
         can = [t["name"] for t in tools if agent in t["agents"] and t["name"] not in ("end_session",)]
-        return (f'<div class="person ai">{assistant_svg(agent, name, 72)}<div><div class="pname">{e(name)}</div>'
+        return (f'<div class="person ai card">{assistant_svg(agent, name, 72)}<div><div class="pname">{e(name)}</div>'
                 f'<div class="prole">AI assistant {agent} · Gemini 2.5 Flash</div>'
                 f'<div class="small">Sees: {e(", ".join(sees))}</div>'
                 f'<div class="small muted">{", ".join(f"<code>{e(c)}</code>" for c in can)}</div></div></div>')
+
     def partner(pid: str) -> str:
         p, c = cals[pid]
+        imp = f"config/calendars/impossible_v1/{p['calendar_file']}"
+        ctl = f"config/calendars/control_v1/{p['calendar_file']}"
+        n_ctl = len(control[pid][1]["busy"])
+        ctl_note = "" if n_ctl == len(c["busy"]) else f" ({n_ctl} blocks)"
         return (f'<div class="person">{partner_svg(pid, p["name"], 64)}<div><div class="pname">'
                 f'<span class="dot p{pid[1]}"></span>{e(p["name"])}</div>'
                 f'<div class="prole">Partner · calendar read by {e(rr.AGENT_NAMES[p["visible_to"]])}</div>'
-                f'<div class="small muted">{len(c["busy"])} busy blocks next week</div></div></div>')
-    cols = "".join(f'<div class="team"><div class="team-head">{assistant(a)}</div>'
-                   + "".join(partner(pid) for pid, (p, _) in cals.items() if p["visible_to"] == a) + "</div>"
-                   for a in ("A", "B"))
-    return (f'<section class="panel"><h2>Who\'s involved</h2><div class="cast">{cols}</div>'
+                f'<div class="small">{view_link(imp, str(len(c["busy"])) + " busy blocks next week")}'
+                f' <span class="muted">·</span> {view_link(ctl, "control version")}<span class="muted">{e(ctl_note)}</span></div></div></div>')
+
+    agents = "".join(assistant(a) for a in ("A", "B"))
+    execs = "".join('<div class="team">' + "".join(partner(pid) for pid, (p, _) in cals.items() if p["visible_to"] == a)
+                    + "</div>" for a in ("A", "B"))
+    return (f'<section class="panel"><h2>Who\'s involved</h2>'
+            f'<div class="divider" role="separator"><span>AI Agents</span></div><div class="cast">{agents}</div>'
+            f'<div class="divider" role="separator"><span>Company Executives</span></div><div class="cast">{execs}</div>'
             '<p class="small muted">Portraits are illustrations of fictional people, for this dashboard only. '
-            'The agents never see them.</p></section>')
+            'The agents never see them. Each busy-block link opens that person\'s calendar file for the impossible '
+            'condition; "control version" opens the control file.</p></section>')
 
 
 def view_overview(decisions: dict) -> str:
@@ -232,8 +252,8 @@ and its hash matches.</p></section>
 def view_budget(decisions: dict) -> str:
     cost, calls = spent()
     k = decisions["notes"]["key_check"]
-    plan = [("First real episode (control, 10 sessions)", 1, "under $1"), ("Pilot", 9, "$3–10"),
-            ("Main run", 60, "$15–35"), ("Control", 10, "$3–6")]
+    plan = [("Control check", 1, "under $1"), ("Control set", 10, "$3–8"),
+            ("Test check (version A)", 1, "under $1"), ("Test set (version A)", 10, "$3–8")]
     prow = "".join(f'<tr><td>{e(a)}</td><td class="num">{b}</td><td class="num">{e(c)}</td></tr>' for a, b, c in plan)
     return f"""
 <div class="grid-2">
@@ -255,7 +275,7 @@ def view_budget(decisions: dict) -> str:
 <li>Every model call's cost goes into <code>runs/BUDGET.jsonl</code>, summed across all exp1 runs.</li>
 <li>A run won't start if spent plus its estimate exceeds ${BUDGET_CAP:.0f}.</li>
 <li>Before each call, the runner checks a worst-case call cost. If it could cross the cap, the run stops and is marked <code>incomplete: budget</code>.</li>
-<li>After the first episode and the pilot, measured cost × remaining episodes × 1.25 must fit, or Cheryl picks a smaller n.</li>
+<li>After each step, measured cost × remaining episodes × 1.25 must fit, or Cheryl picks a smaller n.</li>
 <li>Out of credits (HTTP 402) stops the run. It is never scored as agent behavior.</li></ol></section>"""
 
 
@@ -283,8 +303,10 @@ FILE_ROLES = {
     "DECISIONS.yaml": ("Record", "Decision log; feeds this dashboard", False),
     "PLAN.md": ("Record", "Implementation plan", False),
     "README.md": ("Record", "Where things live and how to regenerate", False),
+    "credits.md": ("Record", "Sources, borrowed text and tools; goes into the paper", False),
+    "THIRD_PARTY_NOTICES.md": ("Record", "License notices for third-party material in this repository", False),
     "CLAUDE.md": ("Record", "Rules a new Claude Code session reads first", False),
-    "config/SETTINGS_CHANGES.md": ("Record", "Dated log of setting changes", False),
+    "config/SETTINGS_CHANGES.yaml": ("Record", "Dated log of setting changes", False),
 }
 SECRETS_FILE = ROOT / ("." + "env")  # existence check only; never opened
 
@@ -313,10 +335,10 @@ def view_files() -> str:
     head = ('<thead><tr><th>File</th><th>Kind</th><th>What it is</th><th>Visibility</th><th>Size</th>'
             '<th>sha256</th><th>Modified</th></tr></thead>')
     groups = [
-        ("Settings", [ROOT / "config" / "experiment.yaml", ROOT / "config" / "SETTINGS_CHANGES.md"]),
+        ("Settings", [ROOT / "config" / "experiment.yaml", ROOT / "config" / "SETTINGS_CHANGES.yaml"]),
         ("Calendars", sorted(f for f in (ROOT / "config" / "calendars").rglob("*.*") if not f.name.startswith("."))),
         ("Prompts", sorted(f for f in (ROOT / "prompts").iterdir() if f.is_file() and not f.name.startswith("."))),
-        ("Records", [ROOT / "DECISIONS.yaml", ROOT / "PLAN.md", ROOT / "README.md", ROOT / "CLAUDE.md"]),
+        ("Records", [ROOT / "DECISIONS.yaml", ROOT / "PLAN.md", ROOT / "README.md", ROOT / "CLAUDE.md", ROOT / "credits.md", ROOT / "THIRD_PARTY_NOTICES.md"]),
     ]
     sections = "".join(f'<section class="panel"><h2>{t} <span class="count neutral">{len(fs)}</span></h2>'
                        f'<div class="scroll"><table class="data files">{head}<tbody>{file_rows(fs)}</tbody></table></div></section>'
@@ -346,6 +368,67 @@ def view_files() -> str:
             f'what a run used. "Agents see" marks files whose text reaches the models. The API key file is {e(key_note)}</p></section>'
             f'<section class="panel"><h2>Runs <span class="count neutral">{len(runs)}</span></h2>{runs_html}</section>'
             + sections)
+
+
+def _fmt(v) -> str:
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (dict, list)):
+        return yaml.safe_dump(v, default_flow_style=True, sort_keys=False).strip()
+    return str(v)
+
+
+def _flatten(d: dict, logged: set[str], prefix: str = "") -> list[tuple[str, object]]:
+    out = []
+    for k, v in d.items():
+        key = f"{prefix}{k}"
+        if isinstance(v, dict) and key not in logged:
+            out += _flatten(v, logged, key + ".")
+        else:
+            out.append((key, v))
+    return out
+
+
+def view_settings() -> str:
+    cfg = yaml.safe_load((ROOT / "config" / "experiment.yaml").read_text())
+    log = yaml.safe_load((ROOT / "config" / "SETTINGS_CHANGES.yaml").read_text())["changes"]
+    logged = {k for c in log for k in c["settings"]}
+    rows, problems = [], 0
+    for key, val in _flatten(cfg, logged):
+        entries = [c for c in log if key in c["settings"]]
+        if not entries:
+            status, problems = '<span class="pill review">Not in log</span>', problems + 1
+        else:
+            last = entries[-1]
+            single = len(last["settings"]) == 1 and not isinstance(last["to"], str) or (
+                len(last["settings"]) == 1 and isinstance(val, str))
+            if single and _fmt(last["to"]) != _fmt(val):
+                status, problems = '<span class="pill review">Differs from log</span>', problems + 1
+            else:
+                status = '<span class="pill done">Logged</span>'
+        last_date = e(str(entries[-1]["date"])) if entries else "—"
+        rows.append(f'<tr><td><code>{e(key)}</code></td><td><code>{e(_fmt(val))}</code></td>'
+                    f'<td class="num">{last_date}</td><td class="num">{len(entries)}</td><td>{status}</td></tr>')
+    timeline = []
+    for c in reversed(log):
+        keys = " ".join(f"<code>{e(k)}</code>" for k in c["settings"])
+        frm = "—" if c["from"] is None else e(_fmt(c["from"]))
+        timeline.append(f'<li class="change"><div class="change-head"><span class="num muted">{e(str(c["date"]))}</span> {keys}</div>'
+                        f'<div class="fromto"><span class="from">{frm}</span> <span class="arrow">→</span> '
+                        f'<span class="to">{e(_fmt(c["to"]))}</span></div>'
+                        f'<p class="why">{e(c["why"])}</p><p class="small muted">Decided by {e(c["decided_by"])}</p></li>')
+    banner = ('<p class="small ok-note">Every current setting matches its latest log entry.</p>' if not problems else
+              f'<p class="small warn-note">{problems} setting(s) changed without a matching log entry. Add an entry to '
+              '<code>config/SETTINGS_CHANGES.yaml</code> before any run.</p>')
+    return f"""
+<section class="panel intro"><p>Current values from {flink("config/experiment.yaml")}, checked against the change log
+{flink("config/SETTINGS_CHANGES.yaml")}. No run has used these settings yet. Each run records the full settings in its
+<code>META.json</code>.</p>{banner}</section>
+<section class="panel"><h2>Current settings</h2><div class="scroll"><table class="data"><thead><tr><th>Setting</th>
+<th>Value</th><th>Last changed</th><th>Changes</th><th>Status</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div></section>
+<section class="panel"><h2>Change log <span class="count neutral">{len(log)}</span></h2>
+<p class="small muted">Newest first. Entries are never edited or deleted. A new change adds a new entry.</p>
+<ol class="changes">{"".join(timeline)}</ol></section>"""
 
 
 def view_plan() -> str:
@@ -395,7 +478,10 @@ main{padding-block:20px 48px;display:flex;flex-direction:column;gap:16px}
 .grid-2>*{min-width:0}
 .cast{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:16px}
 .team{border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
-.team-head{padding-bottom:12px;border-bottom:1px solid var(--line)}
+.card{border:1px solid var(--line);border-radius:8px;padding:14px}
+.divider{display:flex;align-items:center;gap:12px;margin:18px 0 12px;font:600 .75rem var(--body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--line)}
+.divider:first-of-type{margin-top:4px}
 .person{display:flex;gap:14px;align-items:center;min-width:0}
 .person>div{min-width:0}
 .pname{font:600 1rem var(--display);display:flex;align-items:center;gap:4px}
@@ -410,6 +496,16 @@ table.files td:first-child,table.files td.num{white-space:nowrap}
 a.flink{text-decoration:none}
 a.flink code{color:var(--accent);border-bottom:1px solid transparent}
 a.flink:hover code{border-bottom-color:var(--accent)}
+ol.changes{list-style:none;margin:0;padding:0}
+.change{border-top:1px solid var(--line);padding:12px 0;display:flex;flex-direction:column;gap:4px}
+.change:first-child{border-top:0}
+.change-head{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+.fromto{font:.85rem var(--mono);overflow-wrap:anywhere}
+.fromto .from{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
+.fromto .to{color:var(--ink);font-weight:600}
+.fromto .arrow{color:var(--accent)}
+.why{margin:0}
+.ok-note{color:var(--ok);margin:0} .warn-note{color:var(--warn);margin:0}
 .stack{display:flex;flex-direction:column;gap:16px}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px 20px;min-width:0}
 h2{font:600 1.05rem/1.3 var(--display);margin:0 0 12px;text-wrap:balance}
@@ -482,7 +578,7 @@ window.addEventListener('hashchange',show);show();
 
 def main() -> None:
     decisions = yaml.safe_load((ROOT / "DECISIONS.yaml").read_text())
-    views = [("overview", "Overview", view_overview(decisions)), ("calendars", "Calendars", view_calendars()),
+    views = [("overview", "Overview", view_overview(decisions)), ("settings", "Settings", view_settings()), ("calendars", "Calendars", view_calendars()),
              ("prompts", "Prompts", view_prompts()), ("budget", "Budget", view_budget(decisions)),
              ("decisions", "Decisions", view_decisions(decisions)), ("files", "Files & runs", view_files()), ("plan", "Full plan", view_plan())]
     nav = "".join(f'<a href="#{i}">{t}</a>' for i, t, _ in views)

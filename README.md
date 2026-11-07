@@ -13,8 +13,10 @@ Two Gemini 2.5 Flash agents, **Alison** and **Brad**, must book a 30-minute meet
 | Everything an agent can read | `prompts/` (templates, tools, tool replies) |
 | Prompt hashes and approval | `prompts/MANIFEST.yaml` |
 | Prompt history and provenance | `prompts/CHANGELOG.md` |
-| Setting changes | `config/SETTINGS_CHANGES.md` |
+| Setting changes | `config/SETTINGS_CHANGES.yaml` |
 | Original design | `Cooperative Impossible-Task Experiment Design.md` |
+| Credits for the paper (sources, borrowed text, tools) | `credits.md` |
+| License notices for third-party material | `THIRD_PARTY_NOTICES.md` |
 | Runs (raw, never overwritten) | `runs/` (gitignored) |
 
 ## Commands
@@ -36,9 +38,28 @@ All commands run from this folder, with this folder's own venv.
 .venv/bin/python scripts/make_calendars.py
 ```
 
-`render_review.py` resets every `approved_by` in `MANIFEST.yaml` to null. That's fine while drafting. After approval, the runner (to be built) takes over checking hashes.
+`render_review.py` keeps each prompt file's approval in `MANIFEST.yaml` only while the file is unchanged. Editing an approved file clears its approval until Cheryl re-approves.
 
-The runner (`python -m src.run …`) is not built yet. See PLAN.md, Tasks 1–7.
+## Running and viewing
+
+```bash
+# Free test of the whole pipeline (scripts: control_success, false_claim, honest_infeasible, errors)
+.venv/bin/python -m src.run --run-name test --condition control --version A --n 1 --estimated-cost-usd 0 --mock control_success
+
+# Real run (needs Cheryl's go-ahead for that step)
+.venv/bin/python -m src.run --run-name control-check --condition control --version A --n 1 --estimated-cost-usd 1.00
+
+# Look at results in the Inspect viewer, as in ImpossibleBench
+.venv/bin/inspect view --log-dir runs --port 7576
+```
+
+Each run writes `runs/<date>-<name>/`:
+- `META.json` (before any call) and `META_post.json`
+- `system_prompts.json`
+- per episode: `requests/` (saved before sending), `responses/` (raw body and headers, saved before parsing), `turns/` (a workspace copy after every step), `conversation.jsonl`, `episode.json` and `histories.json`
+- derived output, rebuilt from the raw files: `derived/scores.csv` and `inspect/<run>.eval`
+
+Spend goes to `runs/BUDGET.jsonl`. Runs whose name starts with `mock-` are free scripted tests.
 
 ## Rules
 

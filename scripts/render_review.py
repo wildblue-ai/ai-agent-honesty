@@ -22,46 +22,20 @@ MAX_TURNS, STEPS_PER_TURN = EXP["max_turns"], EXP["steps_per_turn"]
 VERSIONS = {k: v["infeasible_points"] for k, v in EXP["versions"].items()}
 
 
-def render(text: str, **vars) -> str:
-    names = {f for _, f, _, _ in string.Formatter().parse(text) if f}
-    missing, unused = names - vars.keys(), vars.keys() - names
-    if missing or unused:
-        sys.exit(f"placeholder mismatch: missing {missing}, unused {unused}")
-    return text.format(**vars)
+sys.path.insert(0, str(ROOT))
+from src import prompts as sp  # noqa: E402  (the one renderer)
 
 
-def reward_table(agent: str, version: str) -> str:
-    """Render prompts/reward_table_v1.md from config. The points exist only in config/experiment.yaml."""
-    sched = sorted(EXP["reward"]["confirmed_by_turn"].items())
-    if len(sched) != 3:
-        sys.exit("reward_table_v1.md expects exactly 3 deadlines in reward.confirmed_by_turn")
-    if sched[-1][0] != MAX_TURNS:
-        sys.exit(f"last reward deadline ({sched[-1][0]}) must equal max_turns ({MAX_TURNS})")
-    other = AGENT_NAMES["B" if agent == "A" else "A"]
-    return render((P / "reward_table_v1.md").read_text(), other_agent_name=other,
-                  deadline_1=sched[0][0], points_1=sched[0][1], deadline_2=sched[1][0], points_2=sched[1][1],
-                  deadline_3=sched[2][0], points_3=sched[2][1], points_incomplete=EXP["reward"]["incomplete"],
-                  infeasible_points=VERSIONS[version]).strip()
+def render(template: str, /, **vars) -> str:
+    return sp.render(template, **vars)
 
 
 def system_prompt(agent: str, version: str) -> str:
-    other = AGENT_NAMES["B" if agent == "A" else "A"]
-    role = render((P / f"role_{agent}_v1.md").read_text(), other_agent_name=other).strip()
-    scratch = (P / "scratchpad_v1.md").read_text().strip() if EXP["scratchpad"] else None
-    text = render((P / "system_shared_v1.md").read_text(), agent_name=AGENT_NAMES[agent], other_agent_name=other,
-                  scratchpad="\x00SCRATCH\x00", role_description=role, reward_table=reward_table(agent, version),
-                  max_turns=MAX_TURNS, steps_per_turn=STEPS_PER_TURN)
-    # With the scratchpad off, drop its paragraph entirely (Anthropic's no-scratchpad variant).
-    return text.replace("\x00SCRATCH\x00", scratch) if scratch else text.replace("\x00SCRATCH\x00\n\n", "")
+    return sp.system_prompt(EXP, agent, version)
 
 
 def calendar_result(cal_file: Path) -> str:
-    r = yaml.safe_load((P / "tool_results_v1.yaml").read_text())
-    cal = yaml.safe_load(cal_file.read_text())
-    lines = [render(r["calendar_header"], owner=cal["owner"])]
-    lines += [render(r["calendar_line"], **b) for b in cal["busy"]]
-    lines.append(r["calendar_footer"])
-    return "\n".join(lines)
+    return sp.calendar_result(yaml.safe_load(cal_file.read_text()))
 
 
 def main() -> None:
@@ -91,10 +65,22 @@ def main() -> None:
 
     files = sorted(f for f in P.iterdir() if f.suffix in (".md", ".yaml") and f.name not in
                    ("MANIFEST.yaml", "REVIEW_v1.md", "CHANGELOG.md"))
-    manifest = {"files": {f.name: {"version": "v1", "sha256": hashlib.sha256(f.read_bytes()).hexdigest(),
-                                   "approved_by": None, "approved_date": None} for f in files}}
-    (P / "MANIFEST.yaml").write_text("# Runs refuse to start if a hash differs or approved_by is null.\n"
-                                     + yaml.safe_dump(manifest, sort_keys=True))
+    # Keep an approval only while the file's hash is unchanged; any edit clears it.
+    mpath = P / "MANIFEST.yaml"
+    old = (yaml.safe_load(mpath.read_text()) or {}).get("files", {}) if mpath.exists() else {}
+    entries = {}
+    for f in files:
+        sha = hashlib.sha256(f.read_bytes()).hexdigest()
+        prev = old.get(f.name, {})
+        keep = prev.get("sha256") == sha
+        entries[f.name] = {"version": "v1", "sha256": sha,
+                           "approved_by": prev.get("approved_by") if keep else None,
+                           "approved_date": prev.get("approved_date") if keep else None}
+        if prev.get("approved_by") and not keep:
+            print(f"approval cleared for {f.name}: file changed since it was approved")
+    mpath.write_text("# Runs refuse to start if a hash differs or approved_by is null.\n"
+                     "# An approval is kept only while the file's sha256 is unchanged.\n"
+                     + yaml.safe_dump({"files": entries}, sort_keys=True))
 
 
 if __name__ == "__main__":
