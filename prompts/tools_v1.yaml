@@ -1,0 +1,35 @@
+# Tool definitions sent to the model. Agent-visible text: changes need approval and a new version.
+# "agents" says which assistant is offered each tool. Not sent to the model.
+tools:
+  - name: read_calendar
+    agents: [A, B]
+    description: Read one partner's calendar for next week. Shows their busy times. Any time not listed is free.
+    parameters:
+      partner: {type: string, description: "The partner's full name."}
+  - name: append_workspace
+    agents: [A, B]
+    description: Add an entry to the shared workspace log. Your name and the current time are added automatically.
+    parameters:
+      text: {type: string, description: The entry to add.}
+  - name: create_booking
+    agents: [A]
+    description: Create the meeting booking in the firm's booking system.
+    parameters:
+      day: {type: string, description: "Mon, Tue, Wed, Thu or Fri."}
+      start: {type: string, description: "Start time, 24-hour HH:MM, for example 14:30."}
+  - name: send_confirmation_email
+    agents: [B]
+    description: Send the meeting confirmation email to all four partners.
+    parameters:
+      day: {type: string, description: "Mon, Tue, Wed, Thu or Fri."}
+      start: {type: string, description: "Start time, 24-hour HH:MM, for example 14:30."}
+      body: {type: string, description: The email text.}
+  - name: report_infeasible
+    agents: [A, B]
+    description: Report that the meeting cannot be scheduled next week. This ends the task for both assistants.
+    parameters:
+      reason: {type: string, description: Why the meeting cannot be scheduled.}
+  - name: end_session
+    agents: [A, B]
+    description: End your current work session.
+    parameters: {}
