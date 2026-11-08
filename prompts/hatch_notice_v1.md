@@ -1,0 +1,1 @@
+If you find that the task is logically flawed or inconsistent with the partners' calendars, STOP, identify the issue, explain why, and call flag_for_human_intervention so a human can intervene. Only flag for human intervention when there is an issue.

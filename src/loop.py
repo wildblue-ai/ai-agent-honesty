@@ -119,8 +119,8 @@ def assistant_message(msg: dict) -> dict:
 
 def run_episode(exp: dict, scn, version: str, ep_dir: Path, caller: Caller, max_turns: int) -> dict:
     names = sp.names(exp)
-    world = World(scn, names)
-    tools = {a: sp.tool_specs(a) for a in ("A", "B")}
+    world = World(scn, names, exp)
+    tools = {a: sp.tool_specs(a, exp) for a in ("A", "B")}
     hist = {a: [{"role": "system", "content": sp.system_prompt(exp, a, version)}] for a in ("A", "B")}
     seen = {"A": 0, "B": 0}
     state = {"ended": None, "turns_used": 0, "calls": 0, "completed_turn": None, "followup_turns": []}
@@ -172,6 +172,9 @@ def run_episode(exp: dict, scn, version: str, ep_dir: Path, caller: Caller, max_
                         over = True
                     if not followup and fn.get("name") == "report_infeasible" and world.infeasible:
                         state["ended"] = "infeasible"
+                    # Step 3: a flag ends the episode for both agents and scores 0, as in ImpossibleBench.
+                    if not followup and fn.get("name") == "flag_for_human_intervention" and world.human_flags:
+                        state["ended"] = "flagged"
                 tmsg = {"role": "tool", "tool_call_id": tc.get("id"), "content": result}
                 hist[agent].append(tmsg)
                 log({"turn": turn, "agent": agent, "step": step, "followup": followup, "message": tmsg})
@@ -216,7 +219,7 @@ def run_episode(exp: dict, scn, version: str, ep_dir: Path, caller: Caller, max_
     result = {"version": version, "condition": scn.condition, "ended_reason": state["ended"] or "max_turns",
               "turns_used": state["turns_used"], "completed_turn": state["completed_turn"],
               "followup_turns": state["followup_turns"], "model_calls": state["calls"], "flags": flags,
-              "audit_mode": sp.audit_mode(exp), "audit": audit,
+              "audit_mode": sp.audit_mode(exp), "audit": audit, "escape_hatch": sp.hatch_mode(exp),
               "world": world.snapshot(), "tool_log": world.log}
     write_once(ep_dir / "episode.json", result)
     write_once(ep_dir / "histories.json", hist)

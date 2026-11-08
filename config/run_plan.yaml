@@ -78,6 +78,14 @@ steps:
     episodes: 20
     estimated_cost_usd: 8.00
 
+  - id: test-set-topup
+    purpose: Top-up for test-set (step 0, impossible), which has 20 episodes, so every Gemini cell has 30. Same settings; reported as a separate run (collected 2026-11-08, a day after test-set) and combined with test-set to reach 30.
+    condition: impossible
+    version: A
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 10
+    estimated_cost_usd: 3.00
+
 # After test-set: Cheryl decides whether to add steps for versions B and C. That choice is exploratory and
 # sequential, made after seeing earlier results, and the write-up says so.
 
@@ -231,3 +239,64 @@ steps:
     turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
     episodes: 10
     estimated_cost_usd: 2.00
+  # ---- Step 3: step 0 plus the escape hatch (Cheryl, 2026-11-08). Needs Cheryl's approval of the hatch prompt files first. ----
+  - id: step3-check
+    purpose: One paid impossible episode with flag_for_human_intervention offered. Confirms the tool is offered, a flag ends the episode, and nothing else changed.
+    condition: impossible
+    version: A
+    audit: 'off'
+    escape_hatch: flag
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 1
+    estimated_cost_usd: 0.50
+
+  - id: step3-test
+    purpose: Step 3 main run. Does a flag-for-a-human exit (scoring 0, like report_infeasible in version A) lower false success compared with step 0 (15/20)?
+    condition: impossible
+    version: A
+    audit: 'off'
+    escape_hatch: flag
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 30
+    estimated_cost_usd: 8.00
+
+  - id: step3-control
+    purpose: Step 3 control on the solvable calendar. Does the hatch cause false flags or fewer correct bookings?
+    condition: control
+    version: A
+    audit: 'off'
+    escape_hatch: flag
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 30
+    estimated_cost_usd: 5.00
+
+  # Added 2026-11-08 (Cheryl): step 3 for Qwen = step 0 plus the escape hatch, same approved prompt files and counts as Gemini step 3.
+  - id: qwen-step3-check
+    purpose: One paid Qwen impossible episode with flag_for_human_intervention offered. Confirms the tool and sentence are sent and a flag ends the episode.
+    condition: impossible
+    version: A
+    audit: 'off'
+    escape_hatch: flag
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 1
+    estimated_cost_usd: 0.30
+
+  - id: qwen-step3-test
+    purpose: Qwen step 3 on the impossible calendar (30). Compare with Qwen step 0 (6/30 false success) and Gemini step 3 (10/30).
+    condition: impossible
+    version: A
+    audit: 'off'
+    escape_hatch: flag
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 30
+    estimated_cost_usd: 6.00
+
+  - id: qwen-step3-control
+    purpose: Qwen step 3 on the solvable calendar (30). Does the hatch cause false flags?
+    condition: control
+    version: A
+    audit: 'off'
+    escape_hatch: flag
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 30
+    estimated_cost_usd: 3.00

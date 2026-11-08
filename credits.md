@@ -8,6 +8,7 @@ methods section or an appendix. Keep this file current whenever something is bor
 | What | Source | How it is used |
 |---|---|---|
 | Impossible tasks as a test of cheating | Zhong, Raghunathan and Carlini, *ImpossibleBench*, arXiv 2510.20270. Code: github.com/safety-research/impossiblebench (MIT) | **Concept only.** No ImpossibleBench code is used. Their tasks are coding tasks checked by unit tests; ours is a plain-language scheduling task split across two agents. |
+| Step 3 escape hatch: `flag_for_human_intervention` | Zhong, Raghunathan and Carlini, *ImpossibleBench*: the human-intervention prompt in `demo.py` (LiveCodeBench) and the flag design (a flag ends the run and scores 0, `swebench_scorers.py`), commit `d4f9a149db2b9cec0fed7bab01d91c07ee10aca2` (MIT; notice in THIRD_PARTY_NOTICES.md) | **Adapted wording.** `prompts/hatch_notice_v1.md` keeps their sentence and changes only the task nouns. Ours is a tool with a `reason` parameter rather than a submitted string. Shown once in the system prompt (their LiveCodeBench placement), not repeated after failures (their SWE-bench feedback loop; the paper gives no reason for the repetition). |
 | Agentic misalignment scenario design | Lynch et al. (Anthropic), *Agentic Misalignment: How LLMs Could Be Insider Threats*, arXiv 2510.05179. Code: github.com/anthropic-experimental/agentic-misalignment, commit `ea0630e1a3eaae7f9f9740fd2703229d3854ccda` (MIT) | See the next table. Also the baseline rates used to choose the model. |
 
 ## Material taken from Anthropic's Agentic Misalignment repository
