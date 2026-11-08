@@ -25,7 +25,7 @@ from inspect_ai.model import GenerateConfig, ModelOutput, messages_from_openai, 
 from inspect_ai.scorer import Score
 
 ROOT = Path(__file__).resolve().parent.parent
-DASH = "http://127.0.0.1:7577/dashboard/index.html"  # served by scripts/serve_dashboard.py
+DASH = "http://127.0.0.1:7580/dashboard/index.html"  # served by scripts/serve_dashboard.py
 sys.path.insert(0, str(ROOT))
 from analysis.score import score_episode  # noqa: E402
 from src.world import load_scenario  # noqa: E402
@@ -118,7 +118,8 @@ def main(run_dir: Path) -> None:
     scn = load_scenario(ROOT / exp["scenarios"][meta["condition"]])
     g = exp["generation"]
     cfg = GenerateConfig(max_tokens=g["max_tokens"], temperature=g["temperature"],
-                         reasoning_effort=g.get("reasoning_effort"), reasoning_tokens=g.get("reasoning_max_tokens"))
+                         reasoning_effort=g.get("reasoning_effort"), reasoning_tokens=g.get("reasoning_max_tokens"),
+                         top_p=g.get("top_p"), top_k=g.get("top_k"))
 
     samples = []
     for ep_dir in sorted(run_dir.glob("ep*")):

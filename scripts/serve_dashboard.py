@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Serve the dashboard over http on 127.0.0.1:7577, so the Inspect viewer (http) can link to it.
+"""Serve the dashboard over http on 127.0.0.1:7580, so the Inspect viewer (http) can link to it.
 
-    .venv/bin/python scripts/serve_dashboard.py        # then open http://127.0.0.1:7577/dashboard/index.html
+    .venv/bin/python scripts/serve_dashboard.py        # then open http://127.0.0.1:7580/dashboard/index.html
 
 Serves this experiment folder, read-only, on the loopback address only. It refuses any path with a part starting with
 "." (the key file, .git, .venv) and anything outside the folder. Standard library only.
@@ -14,7 +14,7 @@ import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PORT = 7577
+PORT = 7580  # qwen-openrouter folder; Gemini uses 7577, local Qwen 7578
 
 
 class SafeHandler(http.server.SimpleHTTPRequestHandler):

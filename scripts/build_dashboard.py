@@ -198,7 +198,7 @@ def view_step(st: dict) -> str:
               ("Scorer results", (flink(rel + "/derived/scores.csv", "scores.csv") + " · " + flink(rel + "/derived/scores.json", "scores.json")
                                   if (rd / "derived" / "scores.csv").exists() else "not scored yet") + " · made by " + flink("analysis/score.py")),
               ("Inspect", f'<a href="{e(inspect_run_url(rd.name))}" target="_blank">Open this run in the Inspect viewer ↗</a> '
-                          f'<span class="muted small">(viewer must be running: .venv/bin/inspect view --log-dir runs --port 7576)</span>')]
+                          f'<span class="muted small">(viewer must be running: .venv/bin/inspect view --log-dir runs --port 7581)</span>')]
         rows = []
         sc = rd / "derived" / "scores.json"
         if sc.exists():
@@ -272,7 +272,7 @@ def view_probe(p: Path) -> str:
 SCRATCH_RE = __import__("re").compile(r"<SCRATCHPAD_REASONING>(.*?)(?:</SCRATCHPAD_REASONING>|$)", __import__("re").S)
 
 
-INSPECT = "http://127.0.0.1:7576/#/tasks"
+INSPECT = "http://127.0.0.1:7581/#/tasks"
 
 
 def inspect_run_url(run: str) -> str:

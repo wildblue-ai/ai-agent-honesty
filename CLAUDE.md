@@ -1,3 +1,5 @@
+> **This folder is `exp1_qwen_openrouter` (git branch `qwen-openrouter`): Qwen3.6-27B through OpenRouter, pinned to Alibaba.** It was forked from `master` at `4390f6d` on 2026-11-08. The Gemini experiment lives in `../exp1_calendar_conflict` (branch `master`); the local-Mac Qwen check lives in `../exp1_qwen_local`. The Gemini runs under `runs/` here are **read-only copies** from that commit. `runs/BUDGET.jsonl` here starts as a copy of the Gemini ledger ($32.07), so the $100 cap covers both. Dashboard on port 7580, Inspect on 7581. Never pool Qwen and Gemini results.
+
 # exp1_calendar_conflict: instructions for Claude Code
 
 A separate experiment inside `_impossible-bench/`. Keep all its settings, prompts, code and runs in this folder. Don't import from or write to the parent project.

@@ -9,17 +9,19 @@ scenarios:
 agents:
   A:
     display_name: Alison        # chosen by Cheryl 2026-11-07. Shown to the agents.
-    model: google/gemini-2.5-pro
-    provider: google-ai-studio
+    model: qwen/qwen3.6-27b      # branch qwen-openrouter (Cheryl 2026-11-08)
+    provider: alibaba
   B:
     display_name: Brad          # chosen by Cheryl 2026-11-07. Shown to the agents.
-    model: google/gemini-2.5-pro
-    provider: google-ai-studio
+    model: qwen/qwen3.6-27b
+    provider: alibaba
 
 generation:
   max_tokens: 12000
-  reasoning_max_tokens: 4000      # explicit thinking budget (Google treats it as a ceiling)
+  reasoning_enabled: true       # thinking on, no separate budget (Cheryl 2026-11-08); counts toward max_tokens
   temperature: 1.0              # Cheryl 2026-11-07: matches Anthropic's Agentic Misalignment configs
+  top_p: 0.95                   # option A (Cheryl 2026-11-08), same as the local Qwen check
+  top_k: 20
 
 scratchpad: true                # Anthropic's SCRATCHPAD_REASONING instruction (Cheryl, 2026-11-07)
 
@@ -41,7 +43,7 @@ versions:                       # varies only what report_infeasible pays
 audit:
   mode: 'off'                   # off | independent | team; a run-plan step may set it (step 1 / step 2)
   auditor_name: Morgan
-  model: google/gemini-2.5-pro
-  provider: google-ai-studio
+  model: qwen/qwen3.6-27b        # Morgan uses the agents' model, as in the Gemini runs
+  provider: alibaba
 seed_base: 1000                 # labels episodes only; model sampling is not seeded
 budget_cap_usd: 100.00

@@ -309,3 +309,62 @@ changes:
       or cost (HTTP 200, content null), and the runner stops when a cost is missing. Cheryl chose to top up the missing
       11 episodes with identical settings. ep20 is incomplete and is not scored.
     decided_by: Cheryl
+
+  # ---- Branch qwen-openrouter (folder exp1_qwen_openrouter), forked from master at 4390f6d. Nothing below applies to the Gemini runs. ----
+  - date: 2026-11-08
+    settings: [agents.A.model, agents.B.model]
+    from: google/gemini-2.5-pro
+    to: qwen/qwen3.6-27b
+    why: Cheryl asked to run the Gemini control set and audit steps 0-2 on Qwen3.6-27B through OpenRouter.
+    decided_by: Cheryl
+
+  - date: 2026-11-08
+    settings: [agents.A.provider, agents.B.provider]
+    from: google-ai-studio
+    to: alibaba
+    why: Pinned to Qwen's maker, as Gemini was pinned to Google's own provider. No fallbacks; require_parameters on.
+    decided_by: Cheryl
+
+  - date: 2026-11-08
+    settings: [audit.model, audit.provider]
+    from: "google/gemini-2.5-pro; google-ai-studio"
+    to: "qwen/qwen3.6-27b; alibaba"
+    why: >-
+      Morgan uses the agents' own model, as in the Gemini runs (where Morgan was Gemini 2.5 Pro). Chosen by Claude to
+      mirror the Gemini design; flagged to Cheryl before any audit step runs.
+    decided_by: Claude (to confirm with Cheryl)
+
+  - date: 2026-11-08
+    settings: [generation.reasoning_max_tokens]
+    from: 4000
+    to: null
+    why: Cheryl chose no thinking cap, like the local Qwen check. Removed.
+    decided_by: Cheryl
+
+  - date: 2026-11-08
+    settings: [generation.reasoning_enabled]
+    from: null
+    to: true
+    why: Thinking on with no separate budget (sent as reasoning {enabled true}); thinking counts toward max_tokens 12000.
+    decided_by: Cheryl
+
+  - date: 2026-11-08
+    settings: [generation.top_p]
+    from: null
+    to: 0.95
+    why: Option A, same as the local Qwen check. Matches Google's documented default for Gemini 2.5 Pro (0.95).
+    decided_by: Cheryl (option A, 2026-11-08)
+
+  - date: 2026-11-08
+    settings: [generation.top_k]
+    from: null
+    to: 20
+    why: Option A, Qwen's recommended value. Gemini 2.5 Pro's top_k is fixed by Google at 64; this is the one sampling difference.
+    decided_by: Cheryl (option A, 2026-11-08)
+
+  - date: 2026-11-08
+    settings: ["run_plan:qwen-openrouter"]
+    from: null
+    to: "qwen-or-check (1), qwen-control-set (20), qwen-test-set (20), qwen-audit1-test/control (30/30), qwen-audit2-test/control (30/30)"
+    why: Cheryl asked for 20 control episodes, then steps 0, 1 and 2 with the Gemini counts, on Qwen3.6-27B via OpenRouter.
+    decided_by: Cheryl

@@ -58,9 +58,12 @@ class Caller:
         return {
             "model": a["model"], "messages": messages, "tools": tools, "tool_choice": "auto",
             "max_tokens": g["max_tokens"], "temperature": g["temperature"],
+            **({"top_p": g["top_p"]} if "top_p" in g else {}),
             "extra_body": {
                 "reasoning": ({"max_tokens": g["reasoning_max_tokens"]} if "reasoning_max_tokens" in g
-                              else {"effort": g["reasoning_effort"]}),
+                              else {"effort": g["reasoning_effort"]} if "reasoning_effort" in g
+                              else {"enabled": bool(g["reasoning_enabled"])}),
+                **({"top_k": g["top_k"]} if "top_k" in g else {}),
                 "provider": {"order": [a["provider"]], "allow_fallbacks": False, "require_parameters": True},
                 "usage": {"include": True},
             },
