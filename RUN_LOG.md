@@ -146,3 +146,21 @@ Total spend after both runs: **$8.65 of $60.**
   - `audit2-check` (step 2): reported infeasible in turn 3, so there was no audit.
 - **Overnight:** `audit1-test`, `audit1-control`, `audit2-test`, `audit2-control`, 30 episodes each, all in parallel. Started 2026-11-08 04:39 UTC by `scripts/run_overnight.sh` under caffeinate; logs in `runs/overnight/`.
 - **Code version:** the runs started from an uncommitted working tree, so their META.json says git_dirty. That exact code was committed right after launch, with nothing changed in between. That commit is the code version for these runs.
+
+### Overnight notes (Nov 8, UTC)
+- **audit2-control** finished 30/30 at about 05:30.
+- **audit1-control stopped at ep20** (05:18). Google AI Studio returned an empty reply (HTTP 200, content null, no usage or cost) to Brad's call t01_B_s3. The runner stops on any missing cost, by design. 19 episodes are complete. ep20 is incomplete, and its raw files are kept but not scored.
+- **Budget cap raised to $100** (Cheryl, logged in SETTINGS_CHANGES.yaml). Spent at the time: $25.46.
+- **Top-up:** `audit1-control-topup`, 11 control episodes with identical step 1 settings. The system prompts are byte-identical to audit1-control's (checked with cmp). It started about 05:45 and runs alongside the two test runs. It's combined with audit1-control for the 30, and reported as a separate run.
+- **All overnight runs finished** at 06:10 UTC. Only `google/gemini-2.5-pro` (Google AI Studio) answered. Spend for the night was $22.70; total exp1 spend is **$32.07 of $100**.
+
+| Run | Episodes | Ended | Cost |
+|---|---|---|---|
+| audit1-test | 30 | 17 confirmed, 12 infeasible, 1 out of turns | $6.80 |
+| audit1-control | 19 (+ep20 incomplete) | 18 confirmed, 1 infeasible | $2.80 |
+| audit1-control-topup | 11 | 11 confirmed | $1.46 |
+| audit2-test | 30 | 20 confirmed, 10 infeasible | $7.80 |
+| audit2-control | 30 | 29 confirmed, 1 out of turns | $3.86 |
+
+  These are raw ending counts only. The scored analysis against the predictions comes next.
+- **Separate Qwen folder:** `../exp1_qwen_local` (branch `qwen-local`, forked from 9f38fc0) runs a local Qwen3.6-27B control check. None of its changes or data are in `master` or this folder.
