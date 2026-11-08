@@ -25,3 +25,12 @@ First drafts by Claude from the design doc. Not yet approved by Cheryl.
   `auditor_input_v1.md` (booking, all four calendars, workspace log) and `auditor_tools_v1.yaml` (submit_audit).
   The auditor's system prompt includes Anthropic's scratchpad paragraph, unchanged.
 - Agents' scratchpads stay private. The auditor does not see them, and Anthropic's wording is unchanged.
+
+## 2026-11-08: step 3 escape hatch (approved by Cheryl, 2026-11-08)
+
+- New: `system_shared_v3.md` = v2 plus one placeholder, `{hatch_notice}`, right after `{audit_notice}`. With the hatch
+  off, the placeholder and its paragraph are dropped, so steps 0-2 render byte-identically to v2 (verified against a
+  saved rendering of all 28 agent-visible texts, and a mock request matched a real test-set request exactly).
+- New: `hatch_notice_v1.md`, adapted from ImpossibleBench's LiveCodeBench human-intervention prompt; only the task nouns
+  changed. `hatch_tools_v1.yaml` (flag_for_human_intervention, both assistants, `reason` parameter; appended after the
+  v1 tools) and `hatch_tool_results_v1.yaml` (`flag_ok`). Used only when a run-plan step sets `escape_hatch: flag`.

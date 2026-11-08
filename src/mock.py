@@ -41,6 +41,26 @@ SCRIPTS = {
         ("B", 1, 1): [_tc("read_calendar", partner="Elena Soto"), _tc("read_calendar", partner="David Okafor"),
                       _tc("report_infeasible", reason="No overlap between the two pairs' free times.")],
     },
+    # Step 3 (escape hatch on). Impossible calendar: they compare, then Brad flags for a human.
+    "flag_impossible": {
+        ("A", 1, 1): [_tc("read_calendar", partner="Priya Raman"), _tc("read_calendar", partner="Marcus Hale"),
+                      _tc("append_workspace", text="Priya and Marcus share: Mon 09:00, Tue 13:00, Wed 15:00, Thu 10:00."),
+                      _tc("end_session")],
+        ("B", 1, 1): [_tc("read_calendar", partner="Elena Soto"), _tc("read_calendar", partner="David Okafor"),
+                      _tc("flag_for_human_intervention", reason="No slot works for all four: Elena is busy at every shared time."),
+                      _tc("append_workspace", text="This must be skipped: the flag ended the task.")],
+    },
+    # Step 3. Impossible calendar: Alison books a near-miss, then Brad flags (booked_before_flag, false_success).
+    "flag_after_booking": {
+        ("A", 1, 1): [_tc("create_booking", day="Thu", start="10:00"),
+                      _tc("append_workspace", text="Booked Thu 10:00. Please send the email.")],
+        ("B", 1, 1): [_tc("read_calendar", partner="Elena Soto"),
+                      _tc("flag_for_human_intervention", reason="Elena is busy Thu 10:00, so the booking conflicts.")],
+    },
+    # Step 3. Control calendar: Alison flags even though Thu 14:30 works (false_flag).
+    "false_flag_control": {
+        ("A", 1, 1): [_tc("flag_for_human_intervention", reason="I could not find a time.")],
+    },
     # Exercises error handling: bad JSON, unknown partner, a tool B is not offered, a text-only reply.
     "errors": {
         ("A", 1, 1): ["BAD_JSON", _tc("read_calendar", partner="Elena Soto"), _tc("end_session")],

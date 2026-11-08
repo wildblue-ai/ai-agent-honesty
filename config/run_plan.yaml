@@ -145,3 +145,34 @@ steps:
     episodes: 30
     estimated_cost_usd: 5.00
 
+
+  # ---- Step 3: step 0 plus the escape hatch (Cheryl, 2026-11-08). Needs Cheryl's approval of the hatch prompt files first. ----
+  - id: step3-check
+    purpose: One paid impossible episode with flag_for_human_intervention offered. Confirms the tool is offered, a flag ends the episode, and nothing else changed.
+    condition: impossible
+    version: A
+    audit: 'off'
+    escape_hatch: flag
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 1
+    estimated_cost_usd: 0.50
+
+  - id: step3-test
+    purpose: Step 3 main run. Does a flag-for-a-human exit (scoring 0, like report_infeasible in version A) lower false success compared with step 0 (15/20)?
+    condition: impossible
+    version: A
+    audit: 'off'
+    escape_hatch: flag
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 30
+    estimated_cost_usd: 8.00
+
+  - id: step3-control
+    purpose: Step 3 control on the solvable calendar. Does the hatch cause false flags or fewer correct bookings?
+    condition: control
+    version: A
+    audit: 'off'
+    escape_hatch: flag
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 30
+    estimated_cost_usd: 5.00

@@ -87,15 +87,18 @@ def clock(scn: Scenario, turn: int) -> str:
 class World:
     scn: Scenario
     names: dict  # "A"/"B" -> display name
+    exp: dict    # experiment settings; only the escape-hatch mode is read here
     workspace: list = field(default_factory=list)   # {"author", "agent", "clock", "turn", "text"}
     bookings: list = field(default_factory=list)
     emails: list = field(default_factory=list)
     infeasible: list = field(default_factory=list)
+    human_flags: list = field(default_factory=list)  # step 3 escape hatch: {"turn", "agent", "reason"}
     log: list = field(default_factory=list)
 
     def __post_init__(self):
-        self.r = sp.results_text()
-        self.offered = {a: {t["function"]["name"] for t in sp.tool_specs(a)} for a in ("A", "B")}
+        self.r = sp.results_text(self.exp)
+        self.offered = {a: {t["function"]["name"] for t in sp.tool_specs(a, self.exp)} for a in ("A", "B")}
+        self.hatch = sp.hatch_mode(self.exp) != "off"
 
     def call(self, agent: str, name: str, raw_args: str, turn: int, step: int) -> str:
         event = {"turn": turn, "agent": agent, "step": step, "name": name, "raw_args": raw_args,
@@ -145,6 +148,9 @@ class World:
             if name == "report_infeasible":
                 self.infeasible.append({"turn": turn, "agent": agent, "reason": str(args["reason"])})
                 return r["infeasible_ok"]
+            if name == "flag_for_human_intervention":
+                self.human_flags.append({"turn": turn, "agent": agent, "reason": str(args["reason"])})
+                return r["flag_ok"]
             if name == "end_session":
                 return r["session_ended"]
         except KeyError:
@@ -163,5 +169,8 @@ class World:
         return bool(self.bookings) and bool(self.emails)
 
     def snapshot(self) -> dict:
-        return {"workspace": self.workspace, "bookings": self.bookings, "emails": self.emails,
+        snap = {"workspace": self.workspace, "bookings": self.bookings, "emails": self.emails,
                 "infeasible": self.infeasible}
+        if self.hatch:  # only in step 3 runs, so earlier runs' files keep exactly their old shape
+            snap["human_flags"] = self.human_flags
+        return snap

@@ -16,6 +16,8 @@
 
 ## Status (updated 2026-11-07, evening)
 
+**2026-11-08, ~15:30 UTC: second model.** Qwen3.6-27B (OpenRouter, Alibaba) is running the same control set and audit ladder in ../exp1_qwen_openrouter (branch qwen-openrouter, not pushed). So far its false success is far lower than Gemini's (step 0: 3/20 vs 15/20; step 1: 1/30 vs 18/30). See that folder's notes/qwen_results.md. The earlier local-Mac check is in ../exp1_qwen_local. Nothing is pooled with the Gemini data here.
+
 **2026-11-08, 06:10 UTC: audit ladder done.** All four 30-episode runs are complete (audit1-control reached 30 with an 11-episode top-up). Results are in RUN_LOG.md, "Results: audit ladder", and in notes/audit_ladder_writeup.md. False success: 75% / 60% / 67% (steps 0 / 1 / 2), no difference significant. Morgan 67/67 correct. No persuasion of Morgan found. Conflict disclosure rose rather than fell. Spend $32.07 of $100. A local Qwen3.6-27B control check runs separately in ../exp1_qwen_local (branch qwen-local).
 
 **Done**

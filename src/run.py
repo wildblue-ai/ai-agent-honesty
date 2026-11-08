@@ -72,6 +72,7 @@ def main() -> None:
     p.add_argument("--version", choices=["A", "B", "C"], help="mock runs only")
     p.add_argument("--n", type=int, help="mock runs only: number of episodes")
     p.add_argument("--audit", choices=["off", "independent", "team"], default="off", help="mock runs only: audit mode")
+    p.add_argument("--hatch", choices=["off", "flag"], default="off", help="mock runs only: step 3 escape hatch")
     args = p.parse_args()
     step = None
     if args.mock:
@@ -93,6 +94,7 @@ def main() -> None:
         args.run_name, args.condition, args.version = step["id"], step["condition"], step["version"]
         args.n, args.estimated_cost_usd = step["episodes"], step["estimated_cost_usd"]
         args.audit = step.get("audit", "off")
+        args.hatch = step.get("escape_hatch", "off")
 
     exp = yaml.safe_load((ROOT / "config" / "experiment.yaml").read_text())
     problems = mismatches(exp)
@@ -102,6 +104,8 @@ def main() -> None:
     exp = __import__("copy").deepcopy(exp)
     exp["audit"]["mode"] = args.audit
     sp.audit_mode(exp)
+    exp["escape_hatch"] = args.hatch  # step 3; 'off' for steps 0-2
+    sp.hatch_mode(exp)
     try:
         prompt_hashes = sp.verify_manifest(require_approved=not args.mock)
     except sp.PromptError as e:
@@ -130,6 +134,7 @@ def main() -> None:
         "run_name": args.run_name, "command": sys.argv, "mock_script": args.mock,
         "plan_step": step, "run_plan_sha256": sp.sha256((ROOT / "config" / "run_plan.yaml").read_text()),
         "condition": args.condition, "versions": [args.version], "n_episodes": args.n, "audit_mode": args.audit,
+        "escape_hatch": args.hatch,
         "git_commit": sh(["git", "rev-parse", "HEAD"]), "git_dirty": bool(sh(["git", "status", "--porcelain"])),
         "python": platform.python_version(), "platform": platform.platform(),
         "packages": sh(["uv", "pip", "freeze", "--python", sys.executable]).splitlines(),

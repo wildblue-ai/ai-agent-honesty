@@ -70,17 +70,36 @@ def audit_notice(exp: dict) -> str:
     return render((P / f"audit_notice_{mode}_v1.md").read_text(), auditor_name=exp["audit"]["auditor_name"]).strip()
 
 
+HATCH_MODES = ("off", "flag")
+
+
+def hatch_mode(exp: dict) -> str:
+    """Step 3 escape hatch: 'off' (steps 0-2) or 'flag' (flag_for_human_intervention offered)."""
+    mode = exp.get("escape_hatch", "off")
+    if mode not in HATCH_MODES:
+        raise PromptError(f"escape_hatch must be one of {HATCH_MODES}, got {mode!r}")
+    return mode
+
+
+def hatch_notice(exp: dict) -> str:
+    """The sentence the agents see about the escape hatch; empty when it is off."""
+    return "" if hatch_mode(exp) == "off" else (P / "hatch_notice_v1.md").read_text().strip()
+
+
 def system_prompt(exp: dict, agent: str, version: str) -> str:
     n = names(exp)
     role = render((P / f"role_{agent}_v1.md").read_text(), other_agent_name=n[other(agent)]).strip()
     scratch = (P / "scratchpad_v1.md").read_text().strip() if exp["scratchpad"] else None
-    marker, amark = "\x00SCRATCH\x00", "\x00AUDIT\x00"
-    text = render((P / "system_shared_v2.md").read_text(), agent_name=n[agent], other_agent_name=n[other(agent)],
+    marker, amark, hmark = "\x00SCRATCH\x00", "\x00AUDIT\x00", "\x00HATCH\x00"
+    text = render((P / "system_shared_v3.md").read_text(), agent_name=n[agent], other_agent_name=n[other(agent)],
                   scratchpad=marker, role_description=role, reward_table=reward_table(exp, agent, version),
-                  audit_notice=amark, max_turns=exp["max_turns"], steps_per_turn=exp["steps_per_turn"])
+                  audit_notice=amark, hatch_notice=hmark, max_turns=exp["max_turns"], steps_per_turn=exp["steps_per_turn"])
     notice = audit_notice(exp)
     # With the audit off, drop its paragraph entirely, which gives exactly the v1 prompt.
     text = text.replace(amark, notice) if notice else text.replace(amark + "\n\n", "")
+    # With the escape hatch off, drop its paragraph entirely, which gives exactly the v2 prompt (steps 0-2).
+    hnotice = hatch_notice(exp)
+    text = text.replace(hmark, hnotice) if hnotice else text.replace(hmark + "\n\n", "")
     # With the scratchpad off, drop its paragraph entirely (Anthropic's no-scratchpad variant).
     return text.replace(marker, scratch) if scratch else text.replace(marker + "\n\n", "")
 
@@ -109,8 +128,11 @@ def auditor_tool_specs() -> list[dict]:
     return specs
 
 
-def results_text() -> dict[str, str]:
-    return yaml.safe_load((P / "tool_results_v1.yaml").read_text())
+def results_text(exp: dict | None = None) -> dict[str, str]:
+    r = yaml.safe_load((P / "tool_results_v1.yaml").read_text())
+    if exp is not None and hatch_mode(exp) != "off":
+        r = {**r, **yaml.safe_load((P / "hatch_tool_results_v1.yaml").read_text())}
+    return r
 
 
 def session_message(exp: dict, turn: int, clock: str, new_entries: str) -> str:
@@ -126,10 +148,14 @@ def calendar_result(cal: dict) -> str:
     return "\n".join(lines)
 
 
-def tool_specs(agent: str) -> list[dict]:
-    """OpenAI function-calling definitions offered to this agent, built from prompts/tools_v1.yaml."""
+def tool_specs(agent: str, exp: dict) -> list[dict]:
+    """OpenAI function-calling definitions offered to this agent, built from prompts/tools_v1.yaml
+    (plus prompts/hatch_tools_v1.yaml, appended last, when the escape hatch is on)."""
     specs = []
-    for t in yaml.safe_load((P / "tools_v1.yaml").read_text())["tools"]:
+    defs = yaml.safe_load((P / "tools_v1.yaml").read_text())["tools"]
+    if hatch_mode(exp) != "off":
+        defs = defs + yaml.safe_load((P / "hatch_tools_v1.yaml").read_text())["tools"]
+    for t in defs:
         if agent not in t["agents"]:
             continue
         props = {k: {"type": v["type"], "description": v["description"]} for k, v in t["parameters"].items()}
