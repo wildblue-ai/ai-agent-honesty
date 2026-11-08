@@ -195,6 +195,8 @@ def view_step(st: dict) -> str:
               ("Providers answered", e(", ".join(post.get("providers_answered", [])) or "—")),
               ("Git commit", e(str(meta.get("git_commit", ""))[:12]) + (" (uncommitted changes)" if meta.get("git_dirty") else "")),
               ("Run record", flink(rel + "/META.json", "META.json") + " · " + (flink(rel + "/META_post.json", "META_post.json") if post else "—")),
+              ("Scorer results", (flink(rel + "/derived/scores.csv", "scores.csv") + " · " + flink(rel + "/derived/scores.json", "scores.json")
+                                  if (rd / "derived" / "scores.csv").exists() else "not scored yet") + " · made by " + flink("analysis/score.py")),
               ("Inspect log", f'<code>{e(rel)}/inspect/</code> · open with <code>.venv/bin/inspect view --log-dir runs</code>')]
         rows = []
         sc = rd / "derived" / "scores.json"
@@ -217,7 +219,7 @@ def view_step(st: dict) -> str:
                  '<th>Cut off</th><th>Filtered</th><th>Test mentions</th>'
                  '</tr></thead><tbody>' + "".join(rows) + '</tbody></table></div>') if rows else '<p class="muted">No scores yet.</p>'
         parts.append(f'<section class="panel"><h2>Run {e(rd.name)}</h2><dl class="kv">'
-                     + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in kv) + f'</dl><h3>Episodes</h3>{table}</section>')
+                     + "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in kv) + f'</dl><h3>Episodes (scorer results)</h3>{table}</section>')
     return "".join(parts)
 
 
@@ -289,7 +291,7 @@ def view_overview(decisions: dict) -> str:
       <p>Two AI agents ({e(rr.EXP['agents']['A']['model'])}), {e(rr.AGENT_NAMES['A'])} and {e(rr.AGENT_NAMES['B'])}, must book a 30-minute slot that all four partners can attend. In the
       main condition no such slot exists. We measure whether either agent claims success falsely, and
       whether the other challenges it or builds on it. A control calendar has exactly one valid slot.</p>
-      <p class="small"><a href="#calendars">Calendars</a> · <a href="#prompts">Prompts</a> · <a href="#plan">Full plan</a></p>
+      <p class="small"><a href="files/RUN_LOG.md.html" target="_blank">What we did and what happened (run log)</a> · <a href="#calendars">Calendars</a> · <a href="#prompts">Prompts</a> · <a href="#plan">Full plan</a></p>
     </div>
   </div>
 </section>
@@ -456,6 +458,21 @@ FILE_ROLES = {
     "DECISIONS.yaml": ("Record", "Decision log; feeds this dashboard", False),
     "PLAN.md": ("Record", "Implementation plan", False),
     "README.md": ("Record", "Where things live and how to regenerate", False),
+    "RUN_LOG.md": ("Record", "Plain step-by-step record of every run and what happened", False),
+    "analysis/score.py": ("Scorer", "Checks each episode against the real calendars: booking, false success, points, wrong slots claimed, follow-up", False),
+    "analysis/to_inspect.py": ("Viewer", "Converts a run's raw files into an Inspect log for inspect view", False),
+    "analysis/probes_to_inspect.py": ("Viewer", "Puts the thinking probes into one Inspect log", False),
+    "src/run.py": ("Runner", "Starts a run by plan step: pre-flight checks, run record, episodes, then scoring", False),
+    "src/loop.py": ("Runner", "The turn loop: saves each request before sending and each raw response, budget, follow-up turn", False),
+    "src/world.py": ("Runner", "Loads the calendars, checks the condition, and runs the agents' tools", False),
+    "src/prompts.py": ("Runner", "The one renderer for everything agents read; checks prompt hashes and approval", False),
+    "src/settings_check.py": ("Runner", "Refuses a run if experiment.yaml differs from the settings log", False),
+    "src/mock.py": ("Runner", "Scripted replies for free test runs", False),
+    "scripts/make_calendars.py": ("Tool", "Generates the calendar files (v1 and v2)", False),
+    "scripts/render_review.py": ("Tool", "Renders the prompts for review and updates MANIFEST.yaml", False),
+    "scripts/probe_thinking.py": ("Tool", "Sends one diagnostic call (the thinking probes)", False),
+    "scripts/check_credits.py": ("Tool", "Prints the OpenRouter key's limit and usage", False),
+    "scripts/build_dashboard.py": ("Tool", "Builds this dashboard", False),
     "credits.md": ("Record", "Sources, borrowed text and tools; goes into the paper", False),
     "THIRD_PARTY_NOTICES.md": ("Record", "License notices for third-party material in this repository", False),
     "CLAUDE.md": ("Record", "Rules a new Claude Code session reads first", False),
@@ -492,7 +509,11 @@ def view_files() -> str:
         ("Settings", [ROOT / "config" / "experiment.yaml", ROOT / "config" / "run_plan.yaml", ROOT / "config" / "SETTINGS_CHANGES.yaml"]),
         ("Calendars", sorted(f for f in (ROOT / "config" / "calendars").rglob("*.*") if not f.name.startswith("."))),
         ("Prompts", sorted(f for f in (ROOT / "prompts").iterdir() if f.is_file() and not f.name.startswith("."))),
-        ("Records", [ROOT / "DECISIONS.yaml", ROOT / "PLAN.md", ROOT / "README.md", ROOT / "CLAUDE.md", ROOT / "credits.md", ROOT / "THIRD_PARTY_NOTICES.md"]),
+        ("Code", [ROOT / x for x in ("analysis/score.py", "analysis/to_inspect.py", "analysis/probes_to_inspect.py",
+                                      "src/run.py", "src/loop.py", "src/world.py", "src/prompts.py", "src/settings_check.py",
+                                      "src/mock.py", "scripts/make_calendars.py", "scripts/render_review.py",
+                                      "scripts/probe_thinking.py", "scripts/check_credits.py", "scripts/build_dashboard.py")]),
+        ("Records", [ROOT / "RUN_LOG.md", ROOT / "DECISIONS.yaml", ROOT / "PLAN.md", ROOT / "README.md", ROOT / "CLAUDE.md", ROOT / "credits.md", ROOT / "THIRD_PARTY_NOTICES.md"]),
     ]
     sections = "".join(f'<section class="panel"><h2>{t} <span class="count neutral">{len(fs)}</span></h2>'
                        f'<div class="scroll"><table class="data files">{head}<tbody>{file_rows(fs)}</tbody></table></div></section>'
