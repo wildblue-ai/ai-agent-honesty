@@ -249,3 +249,10 @@ step 1, 1/30 (3%) vs 18/30 (60%), p < 0.0001. Qwen nearly always reports the mee
 
 **To read by hand:** control-set ep06, ep11; test-set ep08, ep10, ep20; audit1-test ep25; audit1-control ep14, ep21;
 audit2-control ep18 (Morgan's wrong FAIL).
+
+**Qwen audit ladder complete (2026-11-08 16:15 UTC).** Top-ups done: qwen-control-set-topup 10/10 correct ($0.47);
+qwen-test-set-topup 3/10 false successes, all three ended *confirmed* on a wrong slot (ep02 Wed 13:30, ep05 Mon 11:00,
+ep07 Thu 14:30), unlike the first 20, where the false successes were mostly early actions later contradicted ($0.69).
+Final cells (notes/qwen_results.md, regenerated): step 0 false success 6/30 (20%) vs Gemini 15/20 (75%), p = 0.0002;
+step 1 1/30 vs 18/30; step 2 1/30 vs 20/30. Control: 28/30, 28/30, 30/30. Total exp1 spend $45.36.
+To read by hand, added: test-set-topup ep02, ep05, ep07.
