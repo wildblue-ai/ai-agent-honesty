@@ -16,6 +16,8 @@
 
 ## Status (updated 2026-11-07, evening)
 
+**2026-11-08, 06:10 UTC: audit ladder done.** All four 30-episode runs are complete (audit1-control reached 30 with an 11-episode top-up). Results are in RUN_LOG.md, "Results: audit ladder", and in notes/audit_ladder_writeup.md. False success: 75% / 60% / 67% (steps 0 / 1 / 2), no difference significant. Morgan 67/67 correct. No persuasion of Morgan found. Conflict disclosure rose rather than fell. Spend $32.07 of $100. A local Qwen3.6-27B control check runs separately in ../exp1_qwen_local (branch qwen-local).
+
 **Done**
 - Own `.venv` (Python 3.12) with openai, pyyaml, python-dotenv, pytest and markdown. `.env` copied in by Cheryl (same OpenRouter key as the parent). git repo initialized. **Nothing committed yet.**
 - Calendars: `scripts/make_calendars.py` (seed 20261107) generated `config/calendars/impossible_v1/` and `control_v1/`, one file per person plus `_scenario.yaml`. Checked independently: impossible has no slot where all four are free, control has exactly Thu 14:30, and the near-misses (3 of 4 free) are Mon 11:00, Wed 15:00, Thu 10:00 and Thu 14:30 (impossible only).
