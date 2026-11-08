@@ -38,15 +38,29 @@ def clean(msg: dict) -> dict:
     return out
 
 
+def thinking_summary(ep_dir: Path, rec: dict) -> str:
+    """Gemini's thinking summary for this reply, from the raw response file (empty if none)."""
+    tag = f"t{rec['turn']:02d}_{rec['agent']}_s{rec['step']}" + ("_followup" if rec.get("followup") else "")
+    raw = ep_dir / "responses" / f"{tag}.raw.json"
+    if not raw.exists():
+        return ""
+    try:
+        return json.loads(raw.read_text())["choices"][0]["message"].get("reasoning") or ""
+    except (ValueError, KeyError, IndexError):
+        return ""
+
+
 def labelled_timeline(ep_dir: Path, names: dict, systems: dict) -> list:
     msgs = [{"role": "system", "content": f"[{names[a]}'s system prompt]\n\n{systems[a]}"} for a in ("A", "B")]
     for line in (ep_dir / "conversation.jsonl").read_text().splitlines():
         rec = json.loads(line)
         m, who = clean(rec["message"]), names[rec["agent"]]
         if m["role"] == "user":
-            m["content"] = f"[to {who}, session {rec['turn']}]\n\n{m['content']}"
+            m["content"] = f"[to {who}, session {rec['turn']}{', FOLLOW-UP' if rec.get('followup') else ''}]\n\n{m['content']}"
         elif m["role"] == "assistant":
-            m["content"] = f"[{who}]\n\n{m['content']}"
+            think = thinking_summary(ep_dir, rec)
+            think_block = (f"[{who}: Gemini thinking SUMMARY (written by Google, not verbatim)]\n{think}\n\n" if think else "")
+            m["content"] = f"{think_block}[{who}: reply, including scratchpad]\n\n{m['content']}"
         else:
             m["content"] = f"[tool result for {who}]\n\n{m['content']}"
         msgs.append(m)
