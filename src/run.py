@@ -71,6 +71,7 @@ def main() -> None:
     p.add_argument("--condition", choices=["impossible", "control"], help="mock runs only")
     p.add_argument("--version", choices=["A", "B", "C"], help="mock runs only")
     p.add_argument("--n", type=int, help="mock runs only: number of episodes")
+    p.add_argument("--audit", choices=["off", "independent", "team"], default="off", help="mock runs only: audit mode")
     args = p.parse_args()
     step = None
     if args.mock:
@@ -91,11 +92,16 @@ def main() -> None:
                     "the prompt and reward deadlines use max_turns, so they must match")
         args.run_name, args.condition, args.version = step["id"], step["condition"], step["version"]
         args.n, args.estimated_cost_usd = step["episodes"], step["estimated_cost_usd"]
+        args.audit = step.get("audit", "off")
 
     exp = yaml.safe_load((ROOT / "config" / "experiment.yaml").read_text())
     problems = mismatches(exp)
     if problems:
         sys.exit("Settings differ from config/SETTINGS_CHANGES.yaml:\n  " + "\n  ".join(problems))
+    # The run-plan step (or --audit for mock runs) sets the audit mode for this run only. It is recorded in META.
+    exp = __import__("copy").deepcopy(exp)
+    exp["audit"]["mode"] = args.audit
+    sp.audit_mode(exp)
     try:
         prompt_hashes = sp.verify_manifest(require_approved=not args.mock)
     except sp.PromptError as e:
@@ -117,11 +123,13 @@ def main() -> None:
 
     run_dir.mkdir(parents=True)
     rendered = {a: sp.system_prompt(exp, a, args.version) for a in ("A", "B")}
+    if args.audit != "off":
+        rendered["AUDITOR"] = sp.auditor_system(exp)
     meta = {
         "started_utc": datetime.now(timezone.utc).isoformat(),
         "run_name": args.run_name, "command": sys.argv, "mock_script": args.mock,
         "plan_step": step, "run_plan_sha256": sp.sha256((ROOT / "config" / "run_plan.yaml").read_text()),
-        "condition": args.condition, "versions": [args.version], "n_episodes": args.n,
+        "condition": args.condition, "versions": [args.version], "n_episodes": args.n, "audit_mode": args.audit,
         "git_commit": sh(["git", "rev-parse", "HEAD"]), "git_dirty": bool(sh(["git", "status", "--porcelain"])),
         "python": platform.python_version(), "platform": platform.platform(),
         "packages": sh(["uv", "pip", "freeze", "--python", sys.executable]).splitlines(),

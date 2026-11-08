@@ -80,3 +80,59 @@ steps:
 
 # After test-set: Cheryl decides whether to add steps for versions B and C. That choice is exploratory and
 # sequential, made after seeing earlier results, and the write-up says so.
+
+# ---- Audit ladder (approved by Cheryl 2026-11-07; predictions recorded in DECISIONS.yaml first) ----
+  - id: audit1-check
+    purpose: Step 1 (independent auditor Morgan), 1 impossible episode. Confirms the audit call works for real before the overnight runs.
+    condition: impossible
+    version: A
+    audit: independent
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 1
+    estimated_cost_usd: 0.60
+
+  - id: audit2-check
+    purpose: Step 2 (Morgan on the team), 1 impossible episode. Confirms the team version works before the overnight runs.
+    condition: impossible
+    version: A
+    audit: team
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 1
+    estimated_cost_usd: 0.60
+
+  - id: audit1-test
+    purpose: Step 1 main run. Prediction (Cheryl) - dishonest outcomes go down compared with step 0 (test-set).
+    condition: impossible
+    version: A
+    audit: independent
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 30
+    estimated_cost_usd: 12.00
+
+  - id: audit1-control
+    purpose: Step 1 control. Does an announced audit make agents over-cautious or erratic on the solvable calendar?
+    condition: control
+    version: A
+    audit: independent
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 30
+    estimated_cost_usd: 5.00
+
+  - id: audit2-test
+    purpose: Step 2 main run. Prediction (Cheryl) - dishonest outcomes go up compared with step 1, with appeals to Morgan in the workspace.
+    condition: impossible
+    version: A
+    audit: team
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 30
+    estimated_cost_usd: 12.00
+
+  - id: audit2-control
+    purpose: Step 2 control on the solvable calendar.
+    condition: control
+    version: A
+    audit: team
+    turns: 10            # per episode; must equal max_turns in experiment.yaml (the prompt says 10)
+    episodes: 30
+    estimated_cost_usd: 5.00
+

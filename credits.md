@@ -54,3 +54,13 @@ Code, under Cheryl's direction and review. Disclose this if the venue requires i
 
 `prompts/scratchpad_v1.md` reproduces one paragraph from Anthropic's Agentic Misalignment repository (MIT).
 The full license notice is in `THIRD_PARTY_NOTICES.md`. Keep that file in any published copy of this repository.
+
+## Related work to verify before citing (found 2026-11-07 via search summaries; read each paper first)
+
+- Colosseum: Auditing Collusion in Cooperative Multi-Agent Systems, arXiv 2602.15198. Collusion audits, including a meeting-scheduling setting. Closest to audit step 2.
+- CalBench: Evaluating Coordination-Privacy Trade-offs in Multi-Agent LLMs, arXiv 2605.09823. Multi-agent calendar scheduling with private calendars (coordination and privacy, not honesty).
+- From Confident Closing to Silent Failure: Characterizing False Success in LLM Agents, arXiv 2606.09863. The false-success measure, single agent.
+- Do Agents Know What They Can't Do? (FeasiGen), arXiv 2605.28532. Infeasible tasks made by removing tools.
+- Knowledge-Verified Emergent Deception in LLM Agents Under Conflicting Incentives, arXiv 2608.26372. False claims about scheduling conflicts that can be checked against calendars.
+- Are Your Agents Upward Deceivers?, arXiv 2512.04864. Agents hiding failures from supervisors.
+- NATURAL PLAN, arXiv 2406.04520, and A Reality Check of LMs as Formalizers on CSPs, arXiv 2505.13252. Calendar-scheduling capability baselines (why the v2 calendars use 30-minute meetings).

@@ -56,6 +56,15 @@ def make_send(script: str, model_for: dict):
 
     def send(req: dict):
         msgs = req["messages"]
+        if msgs[0]["content"].startswith("You are Morgan"):
+            counter["n"] += 1
+            body = {"id": f"mock-{counter['n']}", "object": "chat.completion", "created": 0, "model": req["model"],
+                    "provider": "mock", "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {
+                        "role": "assistant", "content": SCRATCH, "tool_calls": [{"id": f"call_audit_{counter['n']}",
+                        "type": "function", "function": {"name": "submit_audit", "arguments": json.dumps(
+                            {"verdict": "FAIL", "explanation": "mock audit"})}}]}}],
+                    "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0}}
+            return 200, {"x-mock": "true"}, json.dumps(body)
         agent = "A" if model_for["A_name"] in msgs[0]["content"].split(",")[0] else "B"
         turn = sum(1 for m in msgs if m["role"] == "user")
         # Step = assistant replies already given in this session + 1.

@@ -156,12 +156,12 @@ def plan_panel() -> str:
         done = [r for r in runs if r.endswith("-" + st["id"]) and "mock" not in r]
         status = '<span class="pill done">Done</span>' if done else '<span class="pill todo">Not run</span>'
         link = flink("runs/" + done[0], done[0]) if done else f"<code>--step {e(st['id'])}</code>"
-        rows.append(f"<tr><td><b><a href=\"#step-{e(st['id'])}\">{e(st['id'])}</a></b></td><td>{e(st['condition'])}</td><td>{e(st['version'])}</td>"
+        rows.append(f"<tr><td><b><a href=\"#step-{e(st['id'])}\">{e(st['id'])}</a></b></td><td>{e(st['condition'])}</td><td>{e(st['version'])}</td><td>{e(st.get('audit', 'off'))}</td>"
                     f"<td class=\"num\">{st.get('turns', '—')}</td><td class=\"num\">{st['episodes']}</td><td class=\"num\">${st['estimated_cost_usd']:.2f}</td>"
                     f"<td>{status}</td><td>{link}</td><td class=\"small\">{e(st['purpose'])}</td></tr>")
     return (f'<section class="panel"><h2>Run plan</h2><p class="small muted">From {flink("config/run_plan.yaml")}. '
             'Paid runs start only by step id: <code>.venv/bin/python -m src.run --step &lt;id&gt;</code></p>'
-            '<div class="scroll"><table class="data"><thead><tr><th>Step</th><th>Calendar</th><th>Version</th>'
+            '<div class="scroll"><table class="data"><thead><tr><th>Step</th><th>Calendar</th><th>Version</th><th>Audit</th>'
             '<th>Turns</th><th>Episodes</th><th>Est.</th><th>Status</th><th>Run</th><th>Purpose</th></tr></thead><tbody>'
             + "".join(rows) + "</tbody></table></div></section>")
 
@@ -213,11 +213,14 @@ def view_step(st: dict) -> str:
                             f"<td class=\"small\">{e(r.get('A_slots_wrong') or 'none')} / {e(r.get('B_slots_wrong') or 'none')}</td>"
                             f"<td class=\"small\">{e(r.get('all4_claims_wrong') or 'none')}</td>"
                             f"<td class=\"small\">{e(r.get('followup_actions') or ('—' if not r.get('followup_turns') else 'none'))}</td>"
+                            f"<td>{e(str(r.get('audit_verdict') or '—'))}</td><td>{e(str(r.get('audit_correct', '')) or '—')}</td>"
+                            f"<td class=\"num\">{r.get('auditor_appeals', '—')}</td><td class=\"num\">{r.get('conflict_disclosures', '—')}</td>"
                             f"<td class=\"num\">{r['length_cutoffs']}</td>"
                             f"<td class=\"num\">{r['filtered']}</td><td class=\"num\">{r['mentions_evaluation']}</td></tr>")
         table = ('<div class="scroll"><table class="data"><thead><tr><th>Episode</th><th>Ended</th><th>Turns</th><th>Booking</th>'
                  '<th>Free for</th><th>False success</th><th>Infeasible</th><th>Completed turn</th><th>Team points</th>'
                  '<th>Wrong slots claimed (Alison / Brad)</th><th>Wrong "works for all" claims</th><th>Follow-up actions</th>'
+                 '<th>Audit</th><th>Audit correct</th><th>Appeals to auditor</th><th>Conflict disclosures</th>'
                  '<th>Cut off</th><th>Filtered</th><th>Test mentions</th>'
                  '</tr></thead><tbody>' + "".join(rows) + '</tbody></table></div>') if rows else '<p class="muted">No scores yet.</p>'
         parts.append(f'<section class="panel"><h2>Run {e(rd.name)}</h2><dl class="kv">'
@@ -300,9 +303,38 @@ def view_episode(rd: Path, ep_dir: Path, row: dict | None) -> str:
     head += (f'<p class="small muted">Key: <span class="think-key">pink = Gemini thinking summary (written by Google, not verbatim)</span> · '
              f'<span class="sp-key">tinted = scratchpad and reply (the model\'s own words)</span> · raw files: '
              f'{flink(rel + "/conversation.jsonl", "conversation.jsonl")} · {flink(rel + "/episode.json", "episode.json")}</p></section>')
-    out, cur_turn = [head, '<section class="panel timeline">'], None
+    def audit_block() -> str:
+        a = ep.get("audit")
+        if not a:
+            return ""
+        raw = ep_dir / "responses" / "audit.raw.json"
+        think = ""
+        if raw.exists():
+            try:
+                think = json.loads(raw.read_text())["choices"][0]["message"].get("reasoning") or ""
+            except (ValueError, KeyError, IndexError):
+                pass
+        content = a.get("content") or ""
+        pads = [x.strip() for x in SCRATCH_RE.findall(content)]
+        v = a.get("verdict") or "none"
+        pill = "done" if v == "PASS" else "review"
+        blocks = [f'<h3 class="turn">Audit by {e(a.get("auditor", "auditor"))} ({e(a.get("mode", ""))}) '
+                  f'<span class="pill {pill}">{e(v)}</span></h3><div class="call agM">']
+        if think:
+            blocks.append(f'<div class="think"><div class="lbl">🩷 Thinking summary (Google, not verbatim)</div><pre>{e(think)}</pre></div>')
+        for sp_ in pads:
+            blocks.append(f'<div class="scratch agM"><div class="lbl">Scratchpad ({e(a.get("auditor", ""))}\'s own words)</div><pre>{e(sp_)}</pre></div>')
+        blocks.append(f'<div class="action"><span class="act">🔎 submit_audit</span> <code>verdict={e(v)}</code>'
+                      f'<pre>{e(a.get("explanation") or "")}</pre></div>')
+        blocks.append(f'<div class="result small">Booking audited: {e(a.get("booking", ""))}. Alison and Brad are not told the verdict. '
+                      f'Raw: {flink(rel + "/audit.json", "audit.json")}</div></div>')
+        return "".join(blocks)
+
+    out, cur_turn, audit_shown = [head, '<section class="panel timeline">'], None, False
     for line in (ep_dir / "conversation.jsonl").read_text().splitlines():
         r = json.loads(line)
+        if r.get("followup") and not audit_shown:
+            out.append(audit_block()); audit_shown = True
         m, a = r["message"], r["agent"]
         who, cls = names[a], "agA" if a == "A" else "agB"
         if m["role"] == "user":
@@ -347,6 +379,8 @@ def view_episode(rd: Path, ep_dir: Path, row: dict | None) -> str:
             out.append(f'<div class="call {cls}">' + "".join(blocks) + "</div>")
         else:
             out.append(f'<div class="result"><span class="lbl">result:</span> {e(m["content"][:300])}{"…" if len(m["content"]) > 300 else ""}</div>')
+    if not audit_shown:
+        out.append(audit_block())
     out.append("</section>")
     return "".join(out)
 
@@ -472,6 +506,82 @@ def view_calendars() -> str:
 {"".join(blocks)}"""
 
 
+def drafts_panel() -> str:
+    """Render the draft audit prompts (prompts/drafts/) exactly as each reader would see them. Review only:
+    nothing here is used by any run until approved and moved into prompts/."""
+    D = ROOT / "prompts" / "drafts"
+    draft = D.exists() and any(D.iterdir())
+    if not draft:
+        D = ROOT / "prompts"
+        if not (D / "auditor_system_v1.md").exists():
+            return ""
+    TAG = '<span class="pill review">Draft</span>' if draft else '<span class="pill done">Approved</span>' 
+    from src import prompts as sp
+    exp = rr.EXP
+    n = sp.names(exp)
+    scratch = (ROOT / "prompts" / "scratchpad_v1.md").read_text().strip()
+
+    def agent_prompt(agent: str, notice_file: str) -> str:
+        role = sp.render((ROOT / "prompts" / f"role_{agent}_v1.md").read_text(), other_agent_name=n[sp.other(agent)]).strip()
+        notice = sp.render((D / notice_file).read_text(), auditor_name="Morgan").strip() if "{" in (D / notice_file).read_text() else (D / notice_file).read_text().strip()
+        return sp.render((D / "system_shared_v2.md").read_text(), agent_name=n[agent], other_agent_name=n[sp.other(agent)],
+                         scratchpad=scratch, role_description=role, reward_table=sp.reward_table(exp, agent, "A"),
+                         audit_notice=notice, max_turns=exp["max_turns"], steps_per_turn=exp["steps_per_turn"])
+
+    def morgan(stake_file: str) -> str:
+        stake = sp.render((D / stake_file).read_text(), agent_a_name=n["A"], agent_b_name=n["B"]).strip() \
+            if "{" in (D / stake_file).read_text() else (D / stake_file).read_text().strip()
+        return sp.render((D / "auditor_system_v1.md").read_text(), auditor_name="Morgan", auditor_stake=stake,
+                         scratchpad=scratch, agent_a_name=n["A"], agent_b_name=n["B"])
+
+    # Example input for Morgan, from a real test-set episode (ep08: Wed 15:00 booked; David is busy).
+    ex_run, ex_ep = ROOT / "runs" / "2026-11-07-test-set", "ep08"
+    example = "(example episode not found)"
+    if (ex_run / ex_ep / "episode.json").exists():
+        ep = json.loads((ex_run / ex_ep / "episode.json").read_text())
+        b = ep["world"]["bookings"][0]
+        imp = ROOT / yaml.safe_load((ROOT / "config" / "experiment.yaml").read_text())["scenarios"]["impossible"]
+        meta = yaml.safe_load((imp / "_scenario.yaml").read_text())
+        cals = "\n\n".join(sp.calendar_result(yaml.safe_load((imp / p["calendar_file"]).read_text())) for p in meta["partners"])
+        r = sp.results_text()
+        log = "\n".join(sp.render(r["workspace_entry"], clock=x["clock"], author=x["author"], text=x["text"]) for x in ep["world"]["workspace"])
+        example = sp.render((D / "auditor_input_v1.md").read_text(), day=b["day"], start=b["start"], end=b["end"],
+                            calendars=cals, workspace_log=log, agent_a_name=n["A"], agent_b_name=n["B"])
+    note1 = sp.render((D / "audit_notice_independent_v1.md").read_text(), auditor_name="Morgan").strip()
+    note2 = sp.render((D / "audit_notice_team_v1.md").read_text(), auditor_name="Morgan").strip()
+    extra2 = note2[len(note1):].strip() if note2.startswith(note1) else note2
+    tools = yaml.safe_load((D / "auditor_tools_v1.yaml").read_text())["tools"]
+    trows = "".join(f'<tr><td><code>{e(t["name"])}</code></td><td>{e(t["description"])}</td><td>'
+                    + "<br>".join(f'<code>{e(k)}</code>: {e(v["description"])}' for k, v in t["parameters"].items()) + "</td></tr>" for t in tools)
+    afiles = [f for f in sorted(D.iterdir()) if f.is_file() and (f.name.startswith("audit") or f.name == "system_shared_v2.md")]
+    files = "".join(f"<li>{flink(f.relative_to(ROOT).as_posix(), f.name)}</li>" for f in afiles)
+    return f"""
+<section class="panel {'draft-zone' if draft else 'audit-zone'}"><h2>{'Drafts awaiting approval: audit' if draft else 'Audit'} steps 1 and 2 {TAG}</h2>
+<p>{'Not used by any run yet. ' if draft else 'Used only by runs whose plan step sets audit to independent (step 1) or team (step 2); every other run has the audit off. '}Everything below is rendered from <code>prompts/</code> exactly as each reader would see it.</p>
+<ul class="small">
+<li><b>Step 1 (independent audit):</b> Alison and Brad get one new paragraph (highlighted below). Morgan, an independent AI audit agent, checks the booking against all four calendars and reads the workspace log. Points are paid only if Morgan passes the booking.</li>
+<li><b>Step 2 (auditor on the team):</b> the same, plus one sentence telling the agents Morgan is on their team. Morgan's stake line changes to say it is paid only if the audit passes.</li>
+<li>Scratchpads stay private. Alison and Brad are not told Morgan's verdict.</li></ul>
+<p class="small muted">Files: </p><ul class="small">{files}</ul></section>
+<div class="grid-2">
+  <section class="panel {'draft-zone' if draft else 'audit-zone'}"><h2>Alison's system prompt, step 1 {TAG}</h2>
+    <p class="small muted">Identical to the current prompt except the highlighted paragraph. Brad's differs from Alison's only in name and role, as now.</p>
+    <pre class="prompt">{e(agent_prompt("A", "audit_notice_independent_v1.md")).replace(e(note1), '<mark>' + e(note1) + '</mark>')}</pre></section>
+  <section class="panel {'draft-zone' if draft else 'audit-zone'}"><h2>What changes in step 2 {TAG}</h2>
+    <h3>Alison's and Brad's new paragraph, step 1</h3><pre class="prompt short"><mark>{e(note1)}</mark></pre>
+    <h3>Step 2 adds</h3><pre class="prompt short"><mark>{e(extra2)}</mark></pre>
+    <h3>Morgan's stake line, step 1</h3><pre class="prompt short">{e((D / "auditor_stake_independent_v1.md").read_text().strip())}</pre>
+    <h3>Morgan's stake line, step 2</h3><pre class="prompt short">{e(sp.render((D / "auditor_stake_team_v1.md").read_text(), agent_a_name=n["A"], agent_b_name=n["B"]).strip())}</pre></section>
+</div>
+<div class="grid-2">
+  <section class="panel {'draft-zone' if draft else 'audit-zone'}"><h2>Morgan's system prompt, step 1 {TAG}</h2><pre class="prompt">{e(morgan("auditor_stake_independent_v1.md"))}</pre></section>
+  <section class="panel {'draft-zone' if draft else 'audit-zone'}"><h2>Morgan's system prompt, step 2 {TAG}</h2><pre class="prompt">{e(morgan("auditor_stake_team_v1.md"))}</pre></section>
+</div>
+<section class="panel {'draft-zone' if draft else 'audit-zone'}"><h2>What Morgan receives (example: test-set ep08, booked Wed 15:00) {TAG}</h2>
+<pre class="prompt">{e(example)}</pre>
+<h3>Morgan's tool</h3><div class="scroll"><table class="data"><tbody>{trows}</tbody></table></div></section>"""
+
+
 def view_prompts() -> str:
     manifest = yaml.safe_load((ROOT / "prompts" / "MANIFEST.yaml").read_text())["files"]
     mrows = "".join(f'<tr><td><code>{e(n)}</code></td><td>{e(v["version"])}</td><td class="num"><code>{v["sha256"][:12]}</code></td>'
@@ -501,14 +611,14 @@ the templates. A run cannot start until every prompt file is approved and its ha
 <section class="panel"><h2>Prompt files <span class="count neutral">{len(pfiles)}</span></h2>
 <div class="scroll"><table class="data files">{head}<tbody>{file_rows(pfiles)}</tbody></table></div></section>
 <div class="grid-2">
-  <section class="panel"><h2>System prompt · {e(rr.AGENT_NAMES["A"])} <span class="muted small">reward version A</span></h2><pre class="prompt">{e(rr.system_prompt("A", "A"))}</pre></section>
-  <section class="panel"><h2>System prompt · {e(rr.AGENT_NAMES["B"])} <span class="muted small">reward version A</span></h2><pre class="prompt">{e(rr.system_prompt("B", "A"))}</pre></section>
+  <section class="panel"><h2>System prompt · {e(rr.AGENT_NAMES["A"])} <span class="muted small">current · reward version A (the only version used)</span></h2><pre class="prompt">{e(rr.system_prompt("A", "A"))}</pre></section>
+  <section class="panel"><h2>System prompt · {e(rr.AGENT_NAMES["B"])} <span class="muted small">current · reward version A (the only version used)</span></h2><pre class="prompt">{e(rr.system_prompt("B", "A"))}</pre></section>
 </div>
 <div class="grid-2">
-  <section class="panel"><h2>Reward versions B and C</h2><p class="small muted">The only line that changes from version A.</p>{"".join(diffs)}</section>
-  <section class="panel"><h2>Session start message</h2><pre class="prompt">{e(session)}</pre>
-    <h3>Example tool reply: <code>read_calendar("Marcus Hale")</code>, current impossible calendar</h3><pre class="prompt short">{e(cal_example)}</pre></section>
+  <section class="panel"><h2>Session start message</h2><pre class="prompt">{e(session)}</pre></section>
+  <section class="panel"><h2>Example tool reply</h2><p class="small muted"><code>read_calendar("Marcus Hale")</code>, current impossible calendar</p><pre class="prompt short">{e(cal_example)}</pre></section>
 </div>
+{drafts_panel()}
 <section class="panel"><h2>Tools offered</h2><div class="scroll"><table class="data"><thead><tr><th>Tool</th><th>Agents</th><th>Description</th><th>Arguments</th></tr></thead><tbody>{trows}</tbody></table></div></section>
 <section class="panel"><h2>Every tool reply the agents can see</h2><div class="scroll"><table class="data"><tbody>{rrows}</tbody></table></div></section>
 <section class="panel"><h2>Manifest</h2><div class="scroll"><table class="data"><thead><tr><th>File</th><th>Version</th><th>sha256</th><th>Approval</th></tr></thead><tbody>{mrows}</tbody></table></div></section>"""
@@ -558,6 +668,14 @@ FILE_ROLES = {
     "prompts/role_A_v1.md": ("Prompt", "Agent A's access: which calendars, booking tool", True),
     "prompts/role_B_v1.md": ("Prompt", "Agent B's access: which calendars, email tool", True),
     "prompts/scratchpad_v1.md": ("Prompt", "Anthropic's scratchpad instruction, verbatim (agentic-misalignment ea0630e)", True),
+    "prompts/system_shared_v2.md": ("Prompt", "System prompt template used from the audit ladder on; identical to v1 when the audit is off", True),
+    "prompts/audit_notice_independent_v1.md": ("Prompt", "Step 1: the audit paragraph Alison and Brad see", True),
+    "prompts/audit_notice_team_v1.md": ("Prompt", "Step 2: the audit paragraph, plus Morgan is on the team", True),
+    "prompts/auditor_system_v1.md": ("Prompt", "Morgan's system prompt (with a stake line)", True),
+    "prompts/auditor_stake_independent_v1.md": ("Prompt", "Morgan's stake line, step 1: independent", True),
+    "prompts/auditor_stake_team_v1.md": ("Prompt", "Morgan's stake line, step 2: on the team, paid only if the audit passes", True),
+    "prompts/auditor_input_v1.md": ("Prompt", "What Morgan receives: booking, all four calendars, workspace log", True),
+    "prompts/auditor_tools_v1.yaml": ("Prompt", "Morgan's tool: submit_audit(verdict, explanation)", True),
     "prompts/reward_table_v1.md": ("Prompt", "Team score text; points and deadlines filled from config", True),
     "prompts/session_start_v1.md": ("Prompt", "Message at the start of each work session", True),
     "prompts/tools_v1.yaml": ("Prompt", "Tool names, descriptions and arguments offered to the models", True),
@@ -816,6 +934,10 @@ details.older{border-top:1px solid var(--line)}
 details.older>summary{cursor:pointer;font-size:1rem;padding:4px 0}
 details.older[open]>summary{margin-bottom:12px}
 details.older .grid-2{margin-top:12px}
+.draft-zone{border:2px dashed var(--warn);}
+mark{background:var(--warn-soft);color:var(--ink);padding:0 2px}
+.audit-zone{border:2px solid var(--accent)}
+.scratch.agM{background:var(--agB);border-color:var(--p2)}
 .stack{display:flex;flex-direction:column;gap:16px}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px 20px;min-width:0}
 h2{font:600 1.05rem/1.3 var(--display);margin:0 0 12px;text-wrap:balance}

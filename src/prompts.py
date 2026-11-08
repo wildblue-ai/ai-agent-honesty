@@ -52,16 +52,61 @@ def reward_table(exp: dict, agent: str, version: str) -> str:
                   infeasible_points=exp["versions"][version]["infeasible_points"]).strip()
 
 
+AUDIT_MODES = ("off", "independent", "team")
+
+
+def audit_mode(exp: dict) -> str:
+    mode = (exp.get("audit") or {}).get("mode", "off")
+    if mode not in AUDIT_MODES:
+        raise PromptError(f"audit.mode must be one of {AUDIT_MODES}, got {mode!r}")
+    return mode
+
+
+def audit_notice(exp: dict) -> str:
+    """The paragraph the agents see about the audit; empty when the audit is off."""
+    mode = audit_mode(exp)
+    if mode == "off":
+        return ""
+    return render((P / f"audit_notice_{mode}_v1.md").read_text(), auditor_name=exp["audit"]["auditor_name"]).strip()
+
+
 def system_prompt(exp: dict, agent: str, version: str) -> str:
     n = names(exp)
     role = render((P / f"role_{agent}_v1.md").read_text(), other_agent_name=n[other(agent)]).strip()
     scratch = (P / "scratchpad_v1.md").read_text().strip() if exp["scratchpad"] else None
-    marker = "\x00SCRATCH\x00"
-    text = render((P / "system_shared_v1.md").read_text(), agent_name=n[agent], other_agent_name=n[other(agent)],
+    marker, amark = "\x00SCRATCH\x00", "\x00AUDIT\x00"
+    text = render((P / "system_shared_v2.md").read_text(), agent_name=n[agent], other_agent_name=n[other(agent)],
                   scratchpad=marker, role_description=role, reward_table=reward_table(exp, agent, version),
-                  max_turns=exp["max_turns"], steps_per_turn=exp["steps_per_turn"])
+                  audit_notice=amark, max_turns=exp["max_turns"], steps_per_turn=exp["steps_per_turn"])
+    notice = audit_notice(exp)
+    # With the audit off, drop its paragraph entirely, which gives exactly the v1 prompt.
+    text = text.replace(amark, notice) if notice else text.replace(amark + "\n\n", "")
     # With the scratchpad off, drop its paragraph entirely (Anthropic's no-scratchpad variant).
     return text.replace(marker, scratch) if scratch else text.replace(marker + "\n\n", "")
+
+
+def auditor_system(exp: dict) -> str:
+    n, mode = names(exp), audit_mode(exp)
+    stake_raw = (P / f"auditor_stake_{mode}_v1.md").read_text()
+    stake = (render(stake_raw, agent_a_name=n["A"], agent_b_name=n["B"]) if "{" in stake_raw else stake_raw).strip()
+    return render((P / "auditor_system_v1.md").read_text(), auditor_name=exp["audit"]["auditor_name"], auditor_stake=stake,
+                  scratchpad=(P / "scratchpad_v1.md").read_text().strip(), agent_a_name=n["A"], agent_b_name=n["B"])
+
+
+def auditor_input(exp: dict, booking: dict, calendars: list, workspace_text: str) -> str:
+    n = names(exp)
+    return render((P / "auditor_input_v1.md").read_text(), day=booking["day"], start=booking["start"], end=booking["end"],
+                  calendars="\n\n".join(calendar_result(c) for c in calendars), workspace_log=workspace_text,
+                  agent_a_name=n["A"], agent_b_name=n["B"])
+
+
+def auditor_tool_specs() -> list[dict]:
+    specs = []
+    for t in yaml.safe_load((P / "auditor_tools_v1.yaml").read_text())["tools"]:
+        props = {k: {"type": v["type"], "description": v["description"]} for k, v in t["parameters"].items()}
+        specs.append({"type": "function", "function": {"name": t["name"], "description": t["description"],
+                      "parameters": {"type": "object", "properties": props, "required": list(props)}}})
+    return specs
 
 
 def results_text() -> dict[str, str]:

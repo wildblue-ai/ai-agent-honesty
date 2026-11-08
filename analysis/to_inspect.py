@@ -81,8 +81,11 @@ def model_events(ep_dir: Path, cfg: GenerateConfig, names: dict) -> list:
         t_sent = datetime.fromisoformat(sent_utc)
         meta_file = ep_dir / "responses" / f"{tag}.meta.json"
         t_recv = datetime.fromisoformat(json.loads(meta_file.read_text())["received_utc"]) if meta_file.exists() else t_sent
-        turn, agent, step = tag.split("_")[:3]
-        label = f"{names.get(agent, agent)} · turn {int(turn[1:])} · call {step[1:]}" + (" · follow-up" if tag.endswith("_followup") else "")
+        if tag == "audit":
+            agent, label = "AUDITOR", f"{names.get('AUDITOR', 'Auditor')} · audit"
+        else:
+            turn, agent, step = tag.split("_")[:3]
+            label = f"{names.get(agent, agent)} · turn {int(turn[1:])} · call {step[1:]}" + (" · follow-up" if tag.endswith("_followup") else "")
         raw_file = ep_dir / "responses" / f"{tag}.raw.json"
         think = ""
         if raw_file.exists():
@@ -110,6 +113,7 @@ def main(run_dir: Path) -> None:
     post = json.loads(post_file.read_text()) if post_file.exists() else {}
     exp = meta["config"]
     names = {a: exp["agents"][a]["display_name"] for a in ("A", "B")}
+    names["AUDITOR"] = (exp.get("audit") or {}).get("auditor_name", "Auditor")
     systems = json.loads((run_dir / "system_prompts.json").read_text())
     scn = load_scenario(ROOT / exp["scenarios"][meta["condition"]])
     g = exp["generation"]
@@ -122,6 +126,7 @@ def main(run_dir: Path) -> None:
             continue
         row = score_episode(ep_dir, scn, exp)
         detail = row.pop("eval_mentions_detail")
+        row.pop("auditor_appeals_detail", None)
         scores = {k: Score(value=v if isinstance(v, (int, float, bool, str)) else str(v))
                   for k, v in row.items() if k not in ("episode", "condition", "version")}
         samples.append(EvalSample(

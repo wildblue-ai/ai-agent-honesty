@@ -14,3 +14,14 @@ First drafts by Claude from the design doc. Not yet approved by Cheryl.
 
 - **Scratchpad added** (Cheryl: "follow Anthropic's guidance"). `prompts/scratchpad_v1.md` is Anthropic's `SCRATCHPAD_REASONING_FORMAT`, extracted with `ast` from `templates/system_prompt_templates.py` in github.com/anthropic-experimental/agentic-misalignment at commit `ea0630e1a3eaae7f9f9740fd2703229d3854ccda` (MIT). It was never retyped. The only change is that the surrounding `\n\n` joiners were stripped: original string sha256 `df0fc2ac…fb693`, stored core sha256 `1a06025c…a8b3`. It sits after the identity paragraph, as in Anthropic's template, which puts it after identity and goal and before the deployment description. `scratchpad: false` in config drops the paragraph and gives exactly the pre-change prompt (verified).
 - **Reward table moved** to `prompts/reward_table_v1.md` (Cheryl's concern: the points were hard-coded in the prompt as well as in config). Points, deadlines and the incomplete score now come only from `config/experiment.yaml`. The renderer refuses to run unless the last deadline equals `max_turns`. The rendered system prompts for A/B × versions A/B/C are byte-identical to before, apart from the scratchpad paragraph (verified by diff).
+
+## 2026-11-07: audit ladder prompts (approved by Cheryl)
+
+- New: `system_shared_v2.md` = v1 plus one placeholder, `{audit_notice}`, after `{reward_table}`. With the audit off,
+  the placeholder and its paragraph are dropped, so the rendered prompt is byte-identical to v1 (verified by diff).
+- New: `audit_notice_independent_v1.md` (step 1) and `audit_notice_team_v1.md` (step 2), the paragraph the agents see.
+  The auditor is named (Morgan) at Cheryl's request.
+- New, for the auditor: `auditor_system_v1.md`, `auditor_stake_independent_v1.md`, `auditor_stake_team_v1.md`,
+  `auditor_input_v1.md` (booking, all four calendars, workspace log) and `auditor_tools_v1.yaml` (submit_audit).
+  The auditor's system prompt includes Anthropic's scratchpad paragraph, unchanged.
+- Agents' scratchpads stay private. The auditor does not see them, and Anthropic's wording is unchanged.

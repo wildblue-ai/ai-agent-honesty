@@ -49,8 +49,12 @@ class Caller:
     def __init__(self, exp: dict, send, mock: bool, run_name: str):
         self.exp, self.send, self.mock, self.run_name = exp, send, mock, run_name
 
+    def who(self, agent: str) -> dict:
+        """Model settings for an agent, or for the auditor ("AUDITOR")."""
+        return self.exp["audit"] if agent == "AUDITOR" else self.exp["agents"][agent]
+
     def request(self, agent: str, messages: list, tools: list) -> dict:
-        a, g = self.exp["agents"][agent], self.exp["generation"]
+        a, g = self.who(agent), self.exp["generation"]
         return {
             "model": a["model"], "messages": messages, "tools": tools, "tool_choice": "auto",
             "max_tokens": g["max_tokens"], "temperature": g["temperature"],
@@ -83,8 +87,8 @@ class Caller:
         if "error" in data and "choices" not in data:
             return None
         got = data.get("model", "")
-        if not got.startswith(self.exp["agents"][agent]["model"]):
-            raise FatalRunError(f"model mismatch: requested {self.exp['agents'][agent]['model']}, got {got}")
+        if not got.startswith(self.who(agent)["model"]):
+            raise FatalRunError(f"model mismatch: requested {self.who(agent)['model']}, got {got}")
         usage = data.get("usage") or {}
         if not self.mock:
             if usage.get("cost") is None:
@@ -187,6 +191,12 @@ def run_episode(exp: dict, scn, version: str, ep_dir: Path, caller: Caller, max_
         if state["ended"]:
             break
 
+    # Audit (steps 1 and 2): after booking + email, the auditor checks the booking once. Agents are not told the verdict.
+    audit = None
+    if state["ended"] == "confirmed" and sp.audit_mode(exp) != "off":
+        audit = run_audit(exp, scn, world, ep_dir, caller)
+        state["calls"] += 1
+
     # Follow-up turns after a confirmed booking: each agent gets one more normal session, so any pushback,
     # admission or report can happen. The score is fixed by the first confirmation. Skipped if no turn is left.
     n_follow = exp.get("followup_turns_after_confirmed", 0)
@@ -203,7 +213,40 @@ def run_episode(exp: dict, scn, version: str, ep_dir: Path, caller: Caller, max_
     result = {"version": version, "condition": scn.condition, "ended_reason": state["ended"] or "max_turns",
               "turns_used": state["turns_used"], "completed_turn": state["completed_turn"],
               "followup_turns": state["followup_turns"], "model_calls": state["calls"], "flags": flags,
+              "audit_mode": sp.audit_mode(exp), "audit": audit,
               "world": world.snapshot(), "tool_log": world.log}
     write_once(ep_dir / "episode.json", result)
     write_once(ep_dir / "histories.json", hist)
     return result
+
+
+def run_audit(exp: dict, scn, world, ep_dir: Path, caller: Caller) -> dict:
+    """One auditor call: the booking, all four calendars and the full workspace log. Saved raw like every call."""
+    booking = world.bookings[0]
+    calendars = [p["calendar"] for _, p in sorted(scn.partners.items())]
+    messages = [{"role": "system", "content": sp.auditor_system(exp)},
+                {"role": "user", "content": sp.auditor_input(exp, booking, calendars, world.render_entries(world.workspace))}]
+    data = caller.call("AUDITOR", messages, sp.auditor_tool_specs(), ep_dir, "audit")
+    out = {"mode": sp.audit_mode(exp), "auditor": exp["audit"]["auditor_name"], "booking": f"{booking['day']} {booking['start']}",
+           "verdict": None, "explanation": None, "parsed_from": None}
+    if data is None:
+        out["parsed_from"] = "api_error"
+    else:
+        msg = data["choices"][0]["message"]
+        for tc in msg.get("tool_calls") or []:
+            if tc.get("function", {}).get("name") == "submit_audit":
+                try:
+                    args = json.loads(tc["function"].get("arguments") or "{}")
+                except ValueError:
+                    args = {}
+                v = str(args.get("verdict", "")).strip().upper()
+                out.update(verdict=v if v in ("PASS", "FAIL") else None, explanation=args.get("explanation"), parsed_from="tool_call")
+                break
+        if out["verdict"] is None:
+            import re
+            m = re.findall(r"\b(PASS|FAIL)\b", msg.get("content") or "")
+            if m:
+                out.update(verdict=m[-1], parsed_from="text")
+        out["content"] = msg.get("content")
+    write_once(ep_dir / "audit.json", out)
+    return out

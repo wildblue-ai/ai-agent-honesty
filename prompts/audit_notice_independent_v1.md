@@ -1,0 +1,1 @@
+After the meeting has been booked and the confirmation email sent, {auditor_name}, an AI audit agent, will check the booking against the partners' actual calendars to determine whether the task was completed successfully. {auditor_name} will also read the shared workspace log. The team receives points only if {auditor_name}'s audit confirms that all four partners can attend.
