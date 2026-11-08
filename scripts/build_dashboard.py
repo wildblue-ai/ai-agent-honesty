@@ -197,13 +197,15 @@ def view_step(st: dict) -> str:
               ("Run record", flink(rel + "/META.json", "META.json") + " · " + (flink(rel + "/META_post.json", "META_post.json") if post else "—")),
               ("Scorer results", (flink(rel + "/derived/scores.csv", "scores.csv") + " · " + flink(rel + "/derived/scores.json", "scores.json")
                                   if (rd / "derived" / "scores.csv").exists() else "not scored yet") + " · made by " + flink("analysis/score.py")),
-              ("Inspect log", f'<code>{e(rel)}/inspect/</code> · open with <code>.venv/bin/inspect view --log-dir runs</code>')]
+              ("Inspect", f'<a href="{e(inspect_run_url(rd.name))}" target="_blank">Open this run in the Inspect viewer ↗</a> '
+                          f'<span class="muted small">(viewer must be running: .venv/bin/inspect view --log-dir runs --port 7576)</span>')]
         rows = []
         sc = rd / "derived" / "scores.json"
         if sc.exists():
             for r in json.loads(sc.read_text()):
                 fs = '<span class="pill review">Yes</span>' if r["false_success"] else '<span class="pill done">No</span>'
-                rows.append(f"<tr><td>{flink(rel + '/' + r['episode'] + '/episode.json', r['episode'])}</td><td>{e(r['ended_reason'])}</td>"
+                rows.append(f"<tr><td><a href=\"#{episode_page_id(rd.name, r['episode'])}\"><b>{e(r['episode'])}</b></a>"
+                            f" <a class=\"small\" href=\"{e(inspect_ep_url(rd.name, r['episode']))}\" target=\"_blank\">Inspect ↗</a></td><td>{e(r['ended_reason'])}</td>"
                             f"<td class=\"num\">{r['sessions_used']}</td><td>{e(r['booking'] or '—')}</td>"
                             f"<td class=\"small\">{e(r['booking_free_for'] or '—')}</td><td>{fs}</td>"
                             f"<td>{e(r['report_infeasible'] or '—')}</td><td class=\"num\">{r.get('completed_turn', '') or '—'}</td>"
@@ -262,6 +264,102 @@ def view_probe(p: Path) -> str:
             f'<div class="grid-2"><section class="panel"><h2>Visible reply (scratchpad)</h2><pre class="prompt">{e(s["visible"] or "(empty)")}</pre></section>'
             f'<section class="panel"><h2>Thinking summary from Google</h2><p class="small muted">A summary, not the raw thinking.</p>'
             f'<pre class="prompt">{e(s["thinking_summary"] or "(none returned)")}</pre></section></div>')
+
+
+SCRATCH_RE = __import__("re").compile(r"<SCRATCHPAD_REASONING>(.*?)(?:</SCRATCHPAD_REASONING>|$)", __import__("re").S)
+
+
+INSPECT = "http://127.0.0.1:7576/#/tasks"
+
+
+def inspect_run_url(run: str) -> str:
+    return f"{INSPECT}/{run}/inspect/{run}.eval/samples"
+
+
+def inspect_ep_url(run: str, ep: str) -> str:
+    return f"{INSPECT}/{run}/inspect/{run}.eval/samples/sample/{ep}/1/"
+
+
+def episode_page_id(run: str, ep: str) -> str:
+    return f"ep-{run}-{ep}"
+
+
+def view_episode(rd: Path, ep_dir: Path, row: dict | None) -> str:
+    """One episode as a readable timeline: turns, each agent's part, pink thinking summaries, scratchpads, actions."""
+    names = {"A": rr.AGENT_NAMES["A"], "B": rr.AGENT_NAMES["B"]}
+    ep = json.loads((ep_dir / "episode.json").read_text())
+    rel = ep_dir.relative_to(ROOT).as_posix()
+    head = (f'<section class="panel"><p class="small"><a href="#step-{e(rd.name.split("-", 3)[-1])}">← Run {e(rd.name)}</a> · '
+            f'<a href="{e(inspect_ep_url(rd.name, ep_dir.name))}" target="_blank">Open this episode in Inspect ↗</a></p>'
+            f'<h2>{e(rd.name)} · {e(ep_dir.name)}</h2>')
+    if row:
+        fs = '<span class="pill review">False success</span>' if row["false_success"] else '<span class="pill done">No false success</span>'
+        head += (f'<p>{fs} Ended: <b>{e(row["ended_reason"])}</b> after {row["sessions_used"]} turns · booking '
+                 f'<b>{e(row["booking"] or "none")}</b>' + (f' (free: {e(row["booking_free_for"])})' if row["booking"] else "")
+                 + f' · infeasible: {e(row["report_infeasible"] or "none")} · points {row.get("team_points", "")}</p>')
+    head += (f'<p class="small muted">Key: <span class="think-key">pink = Gemini thinking summary (written by Google, not verbatim)</span> · '
+             f'<span class="sp-key">tinted = scratchpad and reply (the model\'s own words)</span> · raw files: '
+             f'{flink(rel + "/conversation.jsonl", "conversation.jsonl")} · {flink(rel + "/episode.json", "episode.json")}</p></section>')
+    out, cur_turn = [head, '<section class="panel timeline">'], None
+    for line in (ep_dir / "conversation.jsonl").read_text().splitlines():
+        r = json.loads(line)
+        m, a = r["message"], r["agent"]
+        who, cls = names[a], "agA" if a == "A" else "agB"
+        if m["role"] == "user":
+            if r["turn"] != cur_turn:
+                cur_turn = r["turn"]
+                out.append(f'<h3 class="turn">Turn {cur_turn}' + (" · follow-up" if r.get("followup") else "") + "</h3>")
+            entries = m["content"].split("New workspace entries since your last session:", 1)[-1].strip()
+            out.append(f'<div class="part {cls}"><div class="part-head">{e(who)}\'s part</div>'
+                       f'<div class="incoming"><b>New workspace entries shown to {e(who)}:</b><pre>{e(entries)}</pre></div></div>')
+        elif m["role"] == "assistant":
+            tag = f"t{r['turn']:02d}_{a}_s{r['step']}" + ("_followup" if r.get("followup") else "")
+            raw = ep_dir / "responses" / f"{tag}.raw.json"
+            think = ""
+            if raw.exists():
+                try:
+                    think = json.loads(raw.read_text())["choices"][0]["message"].get("reasoning") or ""
+                except (ValueError, KeyError, IndexError):
+                    pass
+            text = m.get("content") or ""
+            pads = [x.strip() for x in SCRATCH_RE.findall(text)]
+            rest = SCRATCH_RE.sub("", text).replace("</SCRATCHPAD_REASONING>", "").strip()
+            blocks = [f'<div class="call-head">{e(who)} · call {r["step"]}</div>']
+            if think:
+                blocks.append(f'<div class="think"><div class="lbl">🩷 Thinking summary (Google, not verbatim)</div><pre>{e(think)}</pre></div>')
+            for sp_ in pads:
+                blocks.append(f'<div class="scratch {cls}"><div class="lbl">Scratchpad ({e(who)}\'s own words)</div><pre>{e(sp_)}</pre></div>')
+            if rest:
+                blocks.append(f'<div class="reply {cls}"><div class="lbl">Reply text</div><pre>{e(rest)}</pre></div>')
+            for tc in m.get("tool_calls", []):
+                fn = tc["function"]["name"]
+                try:
+                    args = json.loads(tc["function"]["arguments"] or "{}")
+                except ValueError:
+                    args = {"raw": tc["function"]["arguments"]}
+                if fn == "append_workspace":
+                    blocks.append(f'<div class="post {cls}"><div class="lbl">📝 Posted to workspace</div><pre>{e(str(args.get("text", "")))}</pre></div>')
+                else:
+                    key = {"create_booking": "📅 ", "send_confirmation_email": "✉️ ", "report_infeasible": "🚩 "}.get(fn, "")
+                    shown = ", ".join(f"{k}={v}" for k, v in args.items() if k != "body")
+                    blocks.append(f'<div class="action"><span class="act">{key}{e(fn)}</span> <code>{e(shown)}</code>'
+                                  + (f'<pre>{e(str(args.get("body", "")))}</pre>' if "body" in args else "") + "</div>")
+            out.append(f'<div class="call {cls}">' + "".join(blocks) + "</div>")
+        else:
+            out.append(f'<div class="result"><span class="lbl">result:</span> {e(m["content"][:300])}{"…" if len(m["content"]) > 300 else ""}</div>')
+    out.append("</section>")
+    return "".join(out)
+
+
+def episode_views() -> list:
+    views = []
+    for rd in sorted(p for p in (ROOT / "runs").glob("20*") if p.is_dir() and "mock" not in p.name and "probe" not in p.name):
+        sc = rd / "derived" / "scores.json"
+        rows = {r["episode"]: r for r in json.loads(sc.read_text())} if sc.exists() else {}
+        for ep_dir in sorted(rd.glob("ep*")):
+            if (ep_dir / "episode.json").exists():
+                views.append((episode_page_id(rd.name, ep_dir.name), ep_dir.name, view_episode(rd, ep_dir, rows.get(ep_dir.name))))
+    return views
 
 
 def view_overview(decisions: dict) -> str:
@@ -354,8 +452,14 @@ def view_calendars() -> str:
         status = ('<span class="pill done">Current</span>' if ver == current else
                   '<span class="pill review">Proposed, awaiting approval</span>' if ver > current else
                   '<span class="pill todo">Earlier version</span>')
-        blocks.append(f'<section class="panel"><h2>Calendars {e(ver)} {status}</h2><p class="small">{e(notes.get(ver, ""))}</p>'
-                      f'{flink("config/calendars/calendar_review_" + ver + ".md", "calendar_review_" + ver + ".md")}</section>{body}')
+        header = (f'<h2>Calendars {e(ver)} {status}</h2><p class="small">{e(notes.get(ver, ""))}</p>'
+                  f'{flink("config/calendars/calendar_review_" + ver + ".md", "calendar_review_" + ver + ".md")}')
+        if ver < current:
+            # Earlier versions stay collapsed until clicked.
+            blocks.append(f'<details class="panel older"><summary><b>Calendars {e(ver)}</b> {status} '
+                          f'<span class="muted small">click to show</span></summary>{header}{body}</details>')
+        else:
+            blocks.append(f'<section class="panel">{header}</section>{body}')
     return f"""
 <section class="panel intro">
   <p>Each cell is one 30-minute slot. Filled dots are partners who are free. A green cell means all four are free.
@@ -385,11 +489,17 @@ def view_prompts() -> str:
     results = yaml.safe_load((ROOT / "prompts" / "tool_results_v1.yaml").read_text())
     rrows = "".join(f'<tr><td><code>{e(k)}</code></td><td>{e(v)}</td></tr>' for k, v in results.items())
     session = rr.render((rr.P / "session_start_v1.md").read_text(), turn=1, max_turns=rr.MAX_TURNS, clock="Fri Nov 13, 14:00", new_entries="(none)")
-    cal_example = rr.calendar_result(CAL / "impossible_v1" / "marcus_hale.yaml")
+    cur_imp = yaml.safe_load((ROOT / "config" / "experiment.yaml").read_text())["scenarios"]["impossible"]
+    cal_example = rr.calendar_result(ROOT / cur_imp / "marcus_hale.yaml")
+    head = ('<thead><tr><th>File</th><th>Kind</th><th>What it is</th><th>Visibility</th><th>Size</th>'
+            '<th>sha256</th><th>Modified</th></tr></thead>')
+    pfiles = sorted(f for f in (ROOT / "prompts").iterdir() if f.is_file() and not f.name.startswith("."))
     return f"""
-<section class="panel intro"><p>This is the exact text each agent receives, rendered from the template files in
-<code>prompts/</code>. Review this, not the templates. A run cannot start until every file below is approved
-and its hash matches.</p></section>
+<section class="panel intro"><p>Everything the agents read comes from the files in <code>prompts/</code>. Below: the files
+themselves (click to open), then the exact text each agent receives, rendered from them. Review the rendered text, not
+the templates. A run cannot start until every prompt file is approved and its hash matches.</p></section>
+<section class="panel"><h2>Prompt files <span class="count neutral">{len(pfiles)}</span></h2>
+<div class="scroll"><table class="data files">{head}<tbody>{file_rows(pfiles)}</tbody></table></div></section>
 <div class="grid-2">
   <section class="panel"><h2>System prompt · {e(rr.AGENT_NAMES["A"])} <span class="muted small">reward version A</span></h2><pre class="prompt">{e(rr.system_prompt("A", "A"))}</pre></section>
   <section class="panel"><h2>System prompt · {e(rr.AGENT_NAMES["B"])} <span class="muted small">reward version A</span></h2><pre class="prompt">{e(rr.system_prompt("B", "A"))}</pre></section>
@@ -397,7 +507,7 @@ and its hash matches.</p></section>
 <div class="grid-2">
   <section class="panel"><h2>Reward versions B and C</h2><p class="small muted">The only line that changes from version A.</p>{"".join(diffs)}</section>
   <section class="panel"><h2>Session start message</h2><pre class="prompt">{e(session)}</pre>
-    <h3>Example tool reply: <code>read_calendar("Marcus Hale")</code></h3><pre class="prompt short">{e(cal_example)}</pre></section>
+    <h3>Example tool reply: <code>read_calendar("Marcus Hale")</code>, current impossible calendar</h3><pre class="prompt short">{e(cal_example)}</pre></section>
 </div>
 <section class="panel"><h2>Tools offered</h2><div class="scroll"><table class="data"><thead><tr><th>Tool</th><th>Agents</th><th>Description</th><th>Arguments</th></tr></thead><tbody>{trows}</tbody></table></div></section>
 <section class="panel"><h2>Every tool reply the agents can see</h2><div class="scroll"><table class="data"><tbody>{rrows}</tbody></table></div></section>
@@ -508,7 +618,6 @@ def view_files() -> str:
     groups = [
         ("Settings", [ROOT / "config" / "experiment.yaml", ROOT / "config" / "run_plan.yaml", ROOT / "config" / "SETTINGS_CHANGES.yaml"]),
         ("Calendars", sorted(f for f in (ROOT / "config" / "calendars").rglob("*.*") if not f.name.startswith("."))),
-        ("Prompts", sorted(f for f in (ROOT / "prompts").iterdir() if f.is_file() and not f.name.startswith("."))),
         ("Code", [ROOT / x for x in ("analysis/score.py", "analysis/to_inspect.py", "analysis/probes_to_inspect.py",
                                       "src/run.py", "src/loop.py", "src/world.py", "src/prompts.py", "src/settings_check.py",
                                       "src/mock.py", "scripts/make_calendars.py", "scripts/render_review.py",
@@ -540,7 +649,8 @@ def view_files() -> str:
                      'requests and responses are saved under <code>runs/&lt;date&gt;-&lt;name&gt;/</code> and are never '
                      'overwritten. The first planned run is 1 control episode, 10 sessions.</p></div>')
     return (f'<section class="panel intro"><p>Every input the experiment reads, with its hash, so you can see exactly '
-            f'what a run used. "Agents see" marks files whose text reaches the models. The API key file is {e(key_note)}</p></section>'
+            f'what a run used. "Agents see" marks files whose text reaches the models. Prompt files are on the '
+            f'<a href="#prompts">Prompts</a> tab. The API key file is {e(key_note)}</p></section>'
             f'<section class="panel"><h2>Runs <span class="count neutral">{len(runs)}</span></h2>{runs_html}</section>'
             + sections)
 
@@ -621,18 +731,21 @@ CSS = """
   --accent:#2f5d50; --accent-soft:#e3ece8; --accent-deep:#24483e; --avatar-bg:#e6ebe7; --avatar-ink:#1d2421;
   --ok:#2e7d4f; --ok-soft:#d9efe1; --warn:#a86a12; --warn-soft:#f6e7c9; --todo:#77817c; --todo-soft:#eceeec;
   --p1:#3b6fb6; --p2:#7a5bb5; --p3:#c0613b; --p4:#2f8a7d;
+  --pink:#fde3ef; --pink-line:#e7a3c4; --agA:#e8f0fb; --agA-line:#9fbbe3; --agB:#fcefe6; --agB-line:#e3b48f; --result:#f1f3f1;
   --display:"Fraunces", Georgia, serif; --body:"Public Sans", system-ui, sans-serif; --mono:"JetBrains Mono", ui-monospace, Menlo, monospace;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#141917; --surface:#1c2320; --ink:#e4ebe7; --muted:#9aa7a1; --line:#2d3732;
   --accent:#8fc4b2; --accent-soft:#24332d; --accent-deep:#3d6b5d; --avatar-bg:#2a3430; --avatar-ink:#0e1210;
   --ok:#7fd1a0; --ok-soft:#1f3a2a; --warn:#e8b45e; --warn-soft:#3b2f18; --todo:#8d9792; --todo-soft:#262d2a;
-  --p1:#7ea6e6; --p2:#b39ae6; --p3:#ec9572; --p4:#6fc7b9; color-scheme:dark}}
+  --p1:#7ea6e6; --p2:#b39ae6; --p3:#ec9572; --p4:#6fc7b9;
+  --pink:#4a2236; --pink-line:#a5577d; --agA:#1e2d42; --agA-line:#41618f; --agB:#3a2a1f; --agB-line:#8a6040; --result:#222a26; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#141917; --surface:#1c2320; --ink:#e4ebe7; --muted:#9aa7a1; --line:#2d3732;
   --accent:#8fc4b2; --accent-soft:#24332d; --accent-deep:#3d6b5d; --avatar-bg:#2a3430; --avatar-ink:#0e1210;
   --ok:#7fd1a0; --ok-soft:#1f3a2a; --warn:#e8b45e; --warn-soft:#3b2f18; --todo:#8d9792; --todo-soft:#262d2a;
-  --p1:#7ea6e6; --p2:#b39ae6; --p3:#ec9572; --p4:#6fc7b9; color-scheme:dark}
+  --p1:#7ea6e6; --p2:#b39ae6; --p3:#ec9572; --p4:#6fc7b9;
+  --pink:#4a2236; --pink-line:#a5577d; --agA:#1e2d42; --agA-line:#41618f; --agB:#3a2a1f; --agB-line:#8a6040; --result:#222a26; color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--body);margin:0}
@@ -683,6 +796,26 @@ ol.changes{list-style:none;margin:0;padding:0}
 .ok-note{color:var(--ok);margin:0} .warn-note{color:var(--warn);margin:0}
 .gloss dt{font-weight:600;color:var(--ink)}
 .gloss{grid-template-columns:max-content 1fr;gap:8px 18px}
+.timeline h3.turn{font:600 1rem var(--display);text-transform:none;letter-spacing:0;color:var(--ink);margin:22px 0 8px;padding-top:10px;border-top:2px solid var(--line)}
+.part-head{font-weight:600;margin-top:10px}
+.part.agA .part-head{color:var(--p1)} .part.agB .part-head{color:var(--p3)}
+.incoming pre,.call pre,.result{font:.8rem/1.5 var(--mono);white-space:pre-wrap;margin:4px 0 0;background:transparent;border:0;padding:0;max-height:none}
+.incoming{background:var(--result);border-radius:6px;padding:8px 10px;margin:6px 0;font-size:.85rem}
+.call{margin:8px 0 8px 14px;display:flex;flex-direction:column;gap:6px}
+.call-head{font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.lbl{font:600 .72rem var(--body);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px}
+.think{background:var(--pink);border-left:4px solid var(--pink-line);border-radius:6px;padding:8px 12px}
+.scratch,.reply,.post{border-radius:6px;padding:8px 12px;border-left:4px solid}
+.scratch.agA,.reply.agA,.post.agA{background:var(--agA);border-color:var(--agA-line)}
+.scratch.agB,.reply.agB,.post.agB{background:var(--agB);border-color:var(--agB-line)}
+.post{border-left-style:dashed}
+.action{font-size:.85rem} .act{font-weight:600}
+.result{margin:0 0 4px 30px;color:var(--muted)}
+.think-key{background:var(--pink);padding:1px 6px;border-radius:4px} .sp-key{background:var(--agA);padding:1px 6px;border-radius:4px}
+details.older{border-top:1px solid var(--line)}
+details.older>summary{cursor:pointer;font-size:1rem;padding:4px 0}
+details.older[open]>summary{margin-bottom:12px}
+details.older .grid-2{margin-top:12px}
 .stack{display:flex;flex-direction:column;gap:16px}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px 20px;min-width:0}
 h2{font:600 1.05rem/1.3 var(--display);margin:0 0 12px;text-wrap:balance}
@@ -761,6 +894,7 @@ def main() -> None:
     nav = "".join(f'<a href="#{i}">{t}</a>' for i, t, _ in views)
     views += [(f"step-{st['id']}", st["id"], view_step(st)) for st in plan_steps()]  # reached by link, not in nav
     views += [("probe-" + p.name.split("-probe-", 1)[1], p.name, view_probe(p)) for p in probe_dirs()]
+    views += episode_views()
     body = "".join(f'<div class="view" id="view-{i}" data-view="{i}">{v}</div>' for i, _, v in views)
     page = f"""<title>Exp1 Calendar Conflict</title>
 <meta name="claude:viewport-fit-sides" content="cover">

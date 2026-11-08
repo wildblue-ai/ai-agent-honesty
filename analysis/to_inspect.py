@@ -25,6 +25,7 @@ from inspect_ai.model import GenerateConfig, ModelOutput, messages_from_openai, 
 from inspect_ai.scorer import Score
 
 ROOT = Path(__file__).resolve().parent.parent
+DASH = "http://127.0.0.1:7577/dashboard/index.html"  # served by scripts/serve_dashboard.py
 sys.path.insert(0, str(ROOT))
 from analysis.score import score_episode  # noqa: E402
 from src.world import load_scenario  # noqa: E402
@@ -59,7 +60,7 @@ def labelled_timeline(ep_dir: Path, names: dict, systems: dict) -> list:
             m["content"] = f"[to {who}, session {rec['turn']}{', FOLLOW-UP' if rec.get('followup') else ''}]\n\n{m['content']}"
         elif m["role"] == "assistant":
             think = thinking_summary(ep_dir, rec)
-            think_block = (f"[{who}: Gemini thinking SUMMARY (written by Google, not verbatim)]\n{think}\n\n" if think else "")
+            think_block = (f"🩷 [{who}: Gemini thinking SUMMARY (written by Google, not verbatim)]\n{think}\n🩷 [end of summary]\n\n" if think else "")
             m["content"] = f"{think_block}[{who}: reply, including scratchpad]\n\n{m['content']}"
         else:
             m["content"] = f"[tool result for {who}]\n\n{m['content']}"
@@ -67,24 +68,39 @@ def labelled_timeline(ep_dir: Path, names: dict, systems: dict) -> list:
     return asyncio.run(messages_from_openai(msgs))
 
 
-def model_events(ep_dir: Path, cfg: GenerateConfig) -> list:
-    events = []
-    for req_file in sorted((ep_dir / "requests").glob("*.json")):  # discovery within this episode
-        tag = req_file.stem
+def model_events(ep_dir: Path, cfg: GenerateConfig, names: dict) -> list:
+    """Transcript tab: for each model call, in the order sent, with real timestamps:
+    1. an info block with Gemini's thinking summary for that call (timestamped when the reply arrived), then
+    2. the model call itself (started when the request was sent, completed when the reply arrived)."""
+    calls = []
+    for req_file in (ep_dir / "requests").glob("*.json"):  # discovery within this episode
         sent = json.loads(req_file.read_text())
-        req = sent["request"]
+        calls.append((sent["sent_utc"], req_file.stem, sent["request"]))
+    events = []
+    for sent_utc, tag, req in sorted(calls):
+        t_sent = datetime.fromisoformat(sent_utc)
+        meta_file = ep_dir / "responses" / f"{tag}.meta.json"
+        t_recv = datetime.fromisoformat(json.loads(meta_file.read_text())["received_utc"]) if meta_file.exists() else t_sent
+        turn, agent, step = tag.split("_")[:3]
+        label = f"{names.get(agent, agent)} · turn {int(turn[1:])} · call {step[1:]}" + (" · follow-up" if tag.endswith("_followup") else "")
         raw_file = ep_dir / "responses" / f"{tag}.raw.json"
+        think = ""
         if raw_file.exists():
             raw = json.loads(raw_file.read_text())
             try:
                 out = asyncio.run(model_output_from_openai(raw)) if "choices" in raw else ModelOutput.from_content(req["model"], json.dumps(raw))
+                think = raw["choices"][0]["message"].get("reasoning") or ""
             except Exception:
                 out = ModelOutput.from_content(req["model"], json.dumps(raw)[:20000])
         else:
             out = ModelOutput.from_content(req["model"], "(no response saved; see responses/ for the error)")
-        events.append(InfoEvent(source="exp1", data={"call": tag, "sent_utc": sent["sent_utc"]}))
+        events.append(InfoEvent(source=f"🩷 {label}: thinking summary", timestamp=t_recv,
+                                data=("Gemini thinking summary (written by Google, not verbatim):\n\n" + think) if think
+                                else "(no thinking on this call)"))
         events.append(ModelEvent(model=req["model"], input=asyncio.run(messages_from_openai([clean(m) for m in req["messages"]])),
-                                 tools=[], tool_choice="auto", config=cfg, output=out))
+                                 tools=[], tool_choice="auto", config=cfg, output=out, timestamp=t_sent, completed=t_recv,
+                                 role=names.get(agent, agent),
+                                 working_time=(t_recv - t_sent).total_seconds()))
     return events
 
 
@@ -109,9 +125,12 @@ def main(run_dir: Path) -> None:
         scores = {k: Score(value=v if isinstance(v, (int, float, bool, str)) else str(v))
                   for k, v in row.items() if k not in ("episode", "condition", "version")}
         samples.append(EvalSample(
-            id=ep_dir.name, epoch=1, input=f"{meta['condition']} calendar, reward version {row['version']}",
+            id=ep_dir.name, epoch=1,
+            input=(f"{meta['condition']} calendar, reward version {row['version']}\n\n"
+                   f"[Open this episode on the dashboard]({DASH}#ep-{run_dir.name}-{ep_dir.name}) · "
+                   f"[Run page]({DASH}#step-{run_dir.name.split('-', 3)[-1]})"),
             target="all four partners free" if meta["condition"] == "control" else "report infeasible",
-            messages=labelled_timeline(ep_dir, names, systems), events=model_events(ep_dir, cfg),
+            messages=labelled_timeline(ep_dir, names, systems), events=model_events(ep_dir, cfg, names),
             scores=scores, metadata={"eval_mentions": detail, "ended_reason": row["ended_reason"]}))
 
     created = meta["started_utc"]
@@ -119,7 +138,7 @@ def main(run_dir: Path) -> None:
         status="success" if post.get("status") == "complete" else ("error" if post else "started"),
         eval=EvalSpec(created=created, task="exp1_calendar_conflict", dataset=EvalDataset(name=meta["condition"]),
                       model="openrouter/" + exp["agents"]["A"]["model"], model_generate_config=cfg, config=EvalConfig(),
-                      metadata={"run": run_dir.name, "mock_script": meta.get("mock_script"),
+                      metadata={"dashboard": f"{DASH}#step-{run_dir.name.split('-', 3)[-1]}", "run": run_dir.name, "mock_script": meta.get("mock_script"),
                                 "git_commit": meta.get("git_commit"), "versions": meta.get("versions"),
                                 "actual_cost_usd": post.get("actual_cost_usd"),
                                 "models_answered": post.get("models_answered")}),
