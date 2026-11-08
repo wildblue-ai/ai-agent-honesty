@@ -6,6 +6,8 @@ A separate experiment inside `_impossible-bench/`. Keep all its settings, prompt
 
 ## Rules specific to this folder
 
+- **GitHub:** private repo `wildblue-ai/ai-agent-honesty` (remote `origin`, branch `master`). It is owned by the wildblue-ai account; the active `gh` account is normally cheryladay, so switch with `gh auth switch -u wildblue-ai` for gh API commands and switch back afterwards. Commit or push only when Cheryl asks.
+
 - **Python:** use `.venv/bin/python` (this folder's venv), never the parent `venv/`.
 - **Secrets:** never run a shell command that names the key file, even an existence check inside a script heredoc. A global hook blocks it. Put such code in a script file instead.
 - **Prompts** (`prompts/`): every file there is agent-visible experimental material. Change nothing without Cheryl's explicit approval, and show the exact diff first. Before approval, drafts may be edited; log the edits in `prompts/CHANGELOG.md`. After approval, a change makes a new `_v2` file. Re-render with `scripts/render_review.py` after any change. It keeps an approval only while that file's hash is unchanged, so an edit clears it.
