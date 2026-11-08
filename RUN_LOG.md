@@ -213,3 +213,7 @@ Alibaba as qwen/qwen3.6-27b, finish_reason tool_calls on every call, thinking te
 **Launched 10:31 UTC:** `scripts/run_qwen_openrouter.sh` (caffeinate, detached). Phase 1: qwen-control-set (20) and
 qwen-test-set (20, step 0) in parallel. Phase 2: qwen-audit1-test/control and qwen-audit2-test/control (30 each) in
 parallel. Logs in runs/qwen-or-logs/. Never pooled with Gemini or local-Mac Qwen data.
+
+**Top-ups queued (Cheryl, 2026-11-08):** qwen-control-set-topup (10) and qwen-test-set-topup (10, audit off), identical
+settings, so the control set and step 0 each reach 30. `scripts/run_qwen_topups.sh` waits for the main script's
+"finished" line, then runs both in parallel.
