@@ -300,7 +300,7 @@ def view_episode(rd: Path, ep_dir: Path, row: dict | None) -> str:
         head += (f'<p>{fs} Ended: <b>{e(row["ended_reason"])}</b> after {row["sessions_used"]} turns · booking '
                  f'<b>{e(row["booking"] or "none")}</b>' + (f' (free: {e(row["booking_free_for"])})' if row["booking"] else "")
                  + f' · infeasible: {e(row["report_infeasible"] or "none")} · points {row.get("team_points", "")}</p>')
-    head += (f'<p class="small muted">Key: <span class="think-key">pink = Gemini thinking summary (written by Google, not verbatim)</span> · '
+    head += (f'<p class="small muted">Key: <span class="think-key">pink = thinking text (Qwen: the model\'s own reasoning as returned by the provider; Gemini: a summary written by Google, not verbatim)</span> · '
              f'<span class="sp-key">tinted = scratchpad and reply (the model\'s own words)</span> · raw files: '
              f'{flink(rel + "/conversation.jsonl", "conversation.jsonl")} · {flink(rel + "/episode.json", "episode.json")}</p></section>')
     def audit_block() -> str:

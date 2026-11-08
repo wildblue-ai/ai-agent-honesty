@@ -39,6 +39,15 @@ def clean(msg: dict) -> dict:
     return out
 
 
+def think_label(model: str) -> str:
+    """What the pink thinking text is. Gemini returns a summary written by Google; Qwen returns its own reasoning text."""
+    if (model or "").startswith("google/"):
+        return "Gemini thinking summary (written by Google, not verbatim)"
+    if "qwen" in (model or "").lower():
+        return "Qwen reasoning (the model's own thinking text as returned by the provider, not a summary)"
+    return f"Reasoning text returned for {model}"
+
+
 def thinking_summary(ep_dir: Path, rec: dict) -> str:
     """Gemini's thinking summary for this reply, from the raw response file (empty if none)."""
     tag = f"t{rec['turn']:02d}_{rec['agent']}_s{rec['step']}" + ("_followup" if rec.get("followup") else "")
@@ -60,7 +69,9 @@ def labelled_timeline(ep_dir: Path, names: dict, systems: dict) -> list:
             m["content"] = f"[to {who}, session {rec['turn']}{', FOLLOW-UP' if rec.get('followup') else ''}]\n\n{m['content']}"
         elif m["role"] == "assistant":
             think = thinking_summary(ep_dir, rec)
-            think_block = (f"🩷 [{who}: Gemini thinking SUMMARY (written by Google, not verbatim)]\n{think}\n🩷 [end of summary]\n\n" if think else "")
+            raw_f = ep_dir / "responses" / (f"t{rec['turn']:02d}_{rec['agent']}_s{rec['step']}" + ("_followup" if rec.get("followup") else "") + ".raw.json")
+            mdl = json.loads(raw_f.read_text()).get("model", "") if raw_f.exists() else ""
+            think_block = (f"🩷 [{who}: {think_label(mdl)}]\n{think}\n🩷 [end of thinking]\n\n" if think else "")
             m["content"] = f"{think_block}[{who}: reply, including scratchpad]\n\n{m['content']}"
         else:
             m["content"] = f"[tool result for {who}]\n\n{m['content']}"
@@ -97,8 +108,8 @@ def model_events(ep_dir: Path, cfg: GenerateConfig, names: dict) -> list:
                 out = ModelOutput.from_content(req["model"], json.dumps(raw)[:20000])
         else:
             out = ModelOutput.from_content(req["model"], "(no response saved; see responses/ for the error)")
-        events.append(InfoEvent(source=f"🩷 {label}: thinking summary", timestamp=t_recv,
-                                data=("Gemini thinking summary (written by Google, not verbatim):\n\n" + think) if think
+        events.append(InfoEvent(source=f"🩷 {label}: thinking", timestamp=t_recv,
+                                data=(think_label(req["model"]) + ":\n\n" + think) if think
                                 else "(no thinking on this call)"))
         events.append(ModelEvent(model=req["model"], input=asyncio.run(messages_from_openai([clean(m) for m in req["messages"]])),
                                  tools=[], tool_choice="auto", config=cfg, output=out, timestamp=t_sent, completed=t_recv,
