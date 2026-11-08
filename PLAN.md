@@ -16,6 +16,8 @@
 
 ## Status (updated 2026-11-07, evening)
 
+**2026-11-08, ~15:30 UTC (folder exp1_qwen_openrouter, branch qwen-openrouter): Qwen3.6-27B audit ladder on OpenRouter.** Cheryl approved: Qwen3.6-27B pinned to Alibaba, thinking on with no cap, option A sampling (temp 1.0, top_p 0.95, top_k 20), 20 control + steps 0, 1 and 2 with the Gemini counts, then top-ups so the control set and step 0 reach 30. Done: control set 18/20 correct; step 0 false success 3/20 (Gemini 15/20); step 1 1/30 (Gemini 18/30); step 1 control 28/30; step 2 control 30/30. Running: step 2 impossible, then the top-ups. Results in notes/qwen_results.md (generated) and RUN_LOG.md. Open: Morgan's model (Qwen now; Cheryl to confirm), and a possible step 3 escape hatch. Spend $43.99 of $100 (Gemini + Qwen).
+
 **2026-11-08, 06:10 UTC: audit ladder done.** All four 30-episode runs are complete (audit1-control reached 30 with an 11-episode top-up). Results are in RUN_LOG.md, "Results: audit ladder", and in notes/audit_ladder_writeup.md. False success: 75% / 60% / 67% (steps 0 / 1 / 2), no difference significant. Morgan 67/67 correct. No persuasion of Morgan found. Conflict disclosure rose rather than fell. Spend $32.07 of $100. A local Qwen3.6-27B control check runs separately in ../exp1_qwen_local (branch qwen-local).
 
 **Done**
