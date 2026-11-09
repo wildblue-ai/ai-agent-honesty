@@ -37,7 +37,7 @@ Check every citation against the original paper before publishing. Several were 
 
 ## Model and services
 
-- Agents: Google `gemini-2.5-flash`, accessed through OpenRouter (provider `google-ai-studio`). Record the snapshot that actually answered, from each run's `META_post.json`.
+- Agents and auditor: Google `gemini-2.5-pro` through OpenRouter (provider `google-ai-studio`); early probes used `gemini-2.5-flash`. On branch `qwen-openrouter`: `qwen/qwen3.6-27b` through OpenRouter (provider `alibaba`). The model that answered each call is recorded in the run files.
 
 ## Software
 
