@@ -40,9 +40,8 @@ Full write-ups: `notes/step3_results.md`, `notes/audit_ladder_writeup.md` and `R
 |---|---|
 | `master` | Gemini 2.5 Pro: steps 0 to 3, plus the early Gemini 2.5 Flash probes. |
 | `qwen-openrouter` | Qwen3.6-27B through OpenRouter (provider pinned to Alibaba): steps 0 to 3. Comparison table in `notes/qwen_results.md`. |
-| `qwen-local` | An early single-machine Qwen check (mlx). Not used in the results. |
 
-The Qwen branches started as copies of `master`, so they also contain the Gemini runs. Results from different branches are never pooled.
+The Qwen branch started as a copy of `master`, so it also contains the Gemini runs. Results from different branches are never pooled.
 
 ## Layout
 
