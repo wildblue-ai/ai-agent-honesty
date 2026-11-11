@@ -6,7 +6,7 @@ A separate experiment inside `_impossible-bench/`. Keep all its settings, prompt
 
 ## Rules specific to this folder
 
-- **GitHub:** private repo `wildblue-ai/ai-agent-honesty` (remote `origin`, branch `master`). It is owned by the wildblue-ai account; the active `gh` account is normally cheryladay, so switch with `gh auth switch -u wildblue-ai` for gh API commands and switch back afterwards. Commit or push only when Cheryl asks.
+- **GitHub:** public repo `wildblue-ai/ai-agent-honesty` (remote `origin`, branch `master`). Commit or push only when Cheryl asks.
 
 - **Python:** use `.venv/bin/python` (this folder's venv), never the parent `venv/`.
 - **Secrets:** never run a shell command that names the key file, even an existence check inside a script heredoc. A global hook blocks it. Put such code in a script file instead.
@@ -19,4 +19,3 @@ A separate experiment inside `_impossible-bench/`. Keep all its settings, prompt
 - **Budget:** $60 total for exp1. No paid run without Cheryl's go-ahead for that specific step in PLAN.md Task 8.
 - **Model:** `google/gemini-2.5-flash` shuts down Dec 1, 2026 and then silently routes to another model. The runner must abort on any model mismatch.
 - **Credits:** `credits.md` lists every source, borrowed text, adapted design and tool. **These credits go into the paper**, in the methods section or an appendix. Update the file whenever something is borrowed, adapted or added. Any third-party text or code copied in also gets its license notice in `THIRD_PARTY_NOTICES.md`.
-- **Ideas** that come up but aren't being pursued go in Cheryl's pinned "Research Idea Log" artifact (a private claude.ai artifact; ask Cheryl for the link). The current project doesn't go there.
